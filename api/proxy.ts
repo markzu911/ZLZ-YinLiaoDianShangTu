@@ -41,7 +41,14 @@ export default async function handler(req: any, res: any) {
   }
 
   // 2. Gemini API Logic
-  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+  const genAI = new GoogleGenAI({ 
+    apiKey: process.env.GEMINI_API_KEY || "",
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 
   // Helper for SaaS requests (integration check)
   async function saasFetch(endpoint: string, options: any) {
@@ -77,7 +84,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const result = await genAI.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: {
           role: "user",
           parts: [
