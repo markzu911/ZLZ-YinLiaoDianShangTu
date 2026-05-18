@@ -1,13 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
-// Initialize the Gemini API client
-export const getGenAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not set');
-  }
-  return new GoogleGenAI({ apiKey });
-};
+import { Type } from "@google/genai";
 
 export interface AnalysisResult {
   productName: string;
