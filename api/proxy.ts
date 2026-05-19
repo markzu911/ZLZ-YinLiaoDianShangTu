@@ -98,7 +98,20 @@ export default async function handler(req: any, res: any) {
       });
 
       const text = result.text;
-      return res.json(JSON.parse(text));
+      try {
+        const parsed = JSON.parse(text);
+        // Ensure minimal structure
+        if (!parsed.productName) parsed.productName = "饮品";
+        if (!parsed.sellingPoints) parsed.sellingPoints = [];
+        if (!parsed.suggestedColor) parsed.suggestedColor = "#FFFFFF";
+        return res.json(parsed);
+      } catch (e) {
+        return res.json({
+          productName: "饮品",
+          sellingPoints: [],
+          suggestedColor: "#FFFFFF"
+        });
+      }
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
     }

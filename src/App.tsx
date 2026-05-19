@@ -155,7 +155,7 @@ export default function App() {
       });
 
       // 2. Selling Points
-      analysisResult.sellingPoints.forEach((sp, i) => {
+      (analysisResult.sellingPoints || []).forEach((sp, i) => {
         if (i < 3) {
           initialTextItems.push({
             id: `sp-${i}`,
@@ -334,10 +334,10 @@ export default function App() {
     setGeneratedImages(item.generatedImages);
     setSelectedImageIndex(0);
     setAnalysis(item.analysis);
-    setTextItems(item.textItems || item.analysis.sellingPoints.map(sp => ({ 
+    setTextItems(item.textItems || (item.analysis.sellingPoints || []).map(sp => ({ 
       id: Math.random().toString(), 
-      text: typeof sp === 'string' ? sp : sp.text, 
-      position: typeof sp === 'string' ? 'tr' : sp.position 
+      text: typeof sp === 'string' ? sp : (sp as any).text, 
+      position: typeof sp === 'string' ? 'tr' : (sp as any).position 
     })));
     setTextColor(item.textColor || item.analysis.suggestedColor);
     setStyle(item.params.style);
