@@ -50,15 +50,18 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ message: "Missing url parameter" });
       }
 
-      const decodedUrl = decodeURIComponent(targetUrl);
-      const urlObj = new URL(decodedUrl);
+      const urlObj = new URL(targetUrl);
 
       // Simple safety check
       if (!['http:', 'https:'].includes(urlObj.protocol)) {
         return res.status(400).json({ message: "Invalid protocol" });
       }
 
-      const response = await fetch(decodedUrl);
+      const response = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
       if (!response.ok) {
         return res.status(response.status).json({ message: `Image fetch failed: ${response.statusText}` });
       }
