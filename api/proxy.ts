@@ -117,8 +117,8 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  if (url === "/api/generate") {
-    const { base64Image, style, aspectRatio, resolution, perspectives, userId, toolId } = req.body;
+  if (url === "/api/generate-one") {
+    const { base64Image, style, aspectRatio, resolution, perspective, userId, toolId } = req.body;
     try {
       const verifyData = await saasFetch("/api/tool/verify", {
         method: "POST",
@@ -129,88 +129,90 @@ export default async function handler(req: any, res: any) {
         return res.status(403).json(verifyData);
       }
 
-      const results = [];
-      for (const p of perspectives) {
-        let promptPrefix = "";
-        if (style === '现代简约') {
-          let perspectiveDetail = "";
-          if (p === "正面视角") {
-            perspectiveDetail = `视角特征：正面构图，机位略微俯视...`;
-          } else if (p === "特写视角") {
-            perspectiveDetail = `视角特征：极近距离特写...`;
-          } else {
-            perspectiveDetail = `视角特征：俯拍视角...`;
-          }
-          promptPrefix = `这是一张针对饮品的电商广告图... ${perspectiveDetail}`;
-        } else if (style === '奢华高级') {
-          promptPrefix = `这是一张针对饮品的高端电商图... 视角：${p}`;
+      const p = perspective;
+      let promptPrefix = "";
+      if (style === '现代简约') {
+        let perspectiveDetail = "";
+        if (p === "正面视角") {
+          perspectiveDetail = `视角特征：正面构图，机位略微俯视...`;
+        } else if (p === "特写视角") {
+          perspectiveDetail = `视角特征：极近距离微距视角，焦点对准瓶身标签与液滴。背景极度虚化（Bokeh），呈现柔和的自然光影。画面干净，强调材质的通透感与清爽感。`;
         } else {
-          // 模特氛围
-          let pDetail = p === "特写视角" ? "侧面特写，模特正在侧脸饮用..." : "竖构图，优雅女性中景...";
-          promptPrefix = `这是一张针对饮品的时尚高端电商大片。人物解剖正确，无多掌。如果原图无吸管，生成的画面也绝对严禁出现吸管。视角：${pDetail}`;
+          perspectiveDetail = `视角特征：饮料平躺在地上，俯拍饮料`;
         }
-
-        const prompt = `${promptPrefix} 请务必保持原始图像中产品的基本形状和标签设计。输出应是一张高密度渲染背景图。`;
-        
-        const response = await genAI.models.generateContent({
-          model: "gemini-3.1-flash-image-preview",
-          contents: {
-            role: "user",
-            parts: [
-              { inlineData: { mimeType: "image/png", data: base64Image.split(',')[1] || base64Image } },
-              { text: prompt }
-            ]
-          },
-          config: {
-            // @ts-ignore
-            imageConfig: {
-              aspectRatio: aspectRatio as any,
-            }
-          }
-        });
-
-        let generatedBase64 = "";
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            generatedBase64 = part.inlineData.data;
-            break;
-          }
-        }
-
-
-        if (!generatedBase64) continue;
-
-        // Consume and Upload steps
-        await saasFetch("/api/tool/consume", {
-          method: "POST",
-          body: JSON.stringify({ userId, toolId }),
-        });
-
-        const buffer = Buffer.from(generatedBase64, 'base64');
-        const tokenData = await saasFetch("/api/upload/direct-token", {
-          method: "POST",
-          body: JSON.stringify({
-            userId, toolId, source: "result", mimeType: "image/png", fileName: `result_${p}.png`, fileSize: buffer.byteLength
-          }),
-        });
-
-        await fetch(tokenData.uploadUrl, {
-          method: "PUT",
-          headers: tokenData.headers || { "Content-Type": "image/png" },
-          body: buffer
-        });
-
-        const commitData = await saasFetch("/api/upload/commit", {
-          method: "POST",
-          body: JSON.stringify({
-            userId, toolId, source: "result", objectKey: tokenData.objectKey, fileSize: buffer.byteLength
-          }),
-        });
-
-        results.push(commitData.image || commitData);
+        promptPrefix = `这是一张针对饮品的电商广告图... ${perspectiveDetail}`;
+      } else if (style === '奢华高级') {
+        promptPrefix = `这是一张针对饮品的高端电商图... 视角：${p}`;
+      } else {
+        // 模特氛围
+        let pDetail = p === "特写视角" ? "侧面特写，模特正在侧脸饮用..." : "竖构图，优雅女性中景...";
+        promptPrefix = `这是一张针对饮品的时尚高端电商大片。人物解剖正确，无多掌。如果原图无吸管，生成的画面也绝对严禁出现吸管。视角：${pDetail}`;
       }
 
-      return res.json({ success: true, images: results });
+      const prompt = `${promptPrefix} 请务必保持原始图像中产品的基本形状和标签设计。输出应是一张高密度渲染背景图。`;
+      
+      const response = await genAI.models.generateContent({
+        model: "gemini-3.1-flash-image-preview",
+        contents: {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: "image/png", data: base64Image.split(',')[1] || base64Image } },
+            { text: prompt }
+          ]
+        },
+        config: {
+          // @ts-ignore
+          imageConfig: {
+            aspectRatio: aspectRatio as any,
+          }
+        }
+      });
+
+      let generatedBase64 = "";
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          generatedBase64 = part.inlineData.data;
+          break;
+        }
+      }
+
+      if (!generatedBase64) {
+        return res.status(500).json({ success: false, message: "AI failed to generate image" });
+      }
+
+      // Consume and Upload steps
+      await saasFetch("/api/tool/consume", {
+        method: "POST",
+        body: JSON.stringify({ userId, toolId }),
+      });
+
+      const buffer = Buffer.from(generatedBase64, 'base64');
+      const tokenData = await saasFetch("/api/upload/direct-token", {
+        method: "POST",
+        body: JSON.stringify({
+          userId, toolId, source: "result", mimeType: "image/png", fileName: `result_${p}.png`, fileSize: buffer.byteLength
+        }),
+      });
+
+      await fetch(tokenData.uploadUrl, {
+        method: "PUT",
+        headers: tokenData.headers || { "Content-Type": "image/png" },
+        body: buffer
+      });
+
+      const commitData = await saasFetch("/api/upload/commit", {
+        method: "POST",
+        body: JSON.stringify({
+          userId, toolId, source: "result", objectKey: tokenData.objectKey, fileSize: buffer.byteLength
+        }),
+      });
+
+      const resultImage = commitData.image || commitData;
+      return res.json({ 
+        success: true, 
+        image: resultImage,
+        imageUrl: resultImage.url 
+      });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
     }

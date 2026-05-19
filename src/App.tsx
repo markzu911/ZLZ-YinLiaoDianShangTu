@@ -18,7 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { analyzeProductImage, generateEcommerceImages, AnalysisResult } from './services/aiService';
+import { analyzeProductImage, generateEcommerceImages, AnalysisResult, fetchSaasImages } from './services/aiService';
 
 interface TextItem {
   id: string;
@@ -73,6 +73,22 @@ export default function App() {
         const { userId, toolId } = event.data;
         setSaasInfo({ userId, toolId });
         console.log('SaaS Initialized:', { userId, toolId });
+        // Trigger initial refresh
+        fetchSaasImages(userId).then(saasImages => {
+           const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
+            id: img.id,
+            sourceImage: img.url,
+            generatedImages: [img.url],
+            analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
+            params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
+            timestamp: new Date(img.createdAt).getTime()
+          }));
+          setHistory(prev => {
+            const existingIds = new Set(prev.map(item => item.id));
+            const newItems = saasHistory.filter(item => !existingIds.has(item.id));
+            return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+          });
+        }).catch(console.error);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -134,11 +150,38 @@ export default function App() {
     }
   };
 
+  const refreshHistoryFromSaas = async () => {
+    if (!saasInfo?.userId) return;
+    try {
+      const saasImages = await fetchSaasImages(saasInfo.userId);
+      // Map SaaS images to a format history can display (partial)
+      // Since we don't have analysis/source, we'll mark them as remote
+      const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
+        id: img.id,
+        sourceImage: img.url, // Fallback
+        generatedImages: [img.url],
+        analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
+        params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
+        timestamp: new Date(img.createdAt).getTime()
+      }));
+
+      // Merge with local history, avoiding duplicates by checking URL or ID
+      setHistory(prev => {
+        const existingIds = new Set(prev.map(item => item.id));
+        const newItems = saasHistory.filter(item => !existingIds.has(item.id));
+        return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+      });
+    } catch (e) {
+      console.error("Failed to refresh from SaaS", e);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!uploadedImage) return;
     
     setGenerating(true);
     setAnalyzing(true);
+    setGeneratedImages([]);
 
     try {
       // Analyze once
@@ -176,18 +219,24 @@ export default function App() {
       setTextColor(analysisResult.suggestedColor);
 
       // Generate 3 images
+      const initialImages: string[] = [];
       const ecomImages = await generateEcommerceImages(
         uploadedImage, 
         style, 
         aspectRatio, 
         resolution, 
         saasInfo?.userId, 
-        saasInfo?.toolId
+        saasInfo?.toolId,
+        (url, index) => {
+          setGeneratedImages(prev => {
+            const next = [...prev];
+            next[index] = url;
+            return next;
+          });
+          if (index === 0) setSelectedImageIndex(0);
+        }
       );
 
-      setGeneratedImages(ecomImages);
-      setSelectedImageIndex(0);
-      
       const newItem: HistoryItem = {
         id: Date.now().toString(),
         sourceImage: uploadedImage,
@@ -201,9 +250,13 @@ export default function App() {
       setHistory(prev => [newItem, ...prev]);
       
       setStep(3);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation failed", error);
-      alert("Generation failed. Please try again.");
+      alert(`生成失败: ${error.message}`);
+      // Refresh history if it's a timeout error
+      if (error.message.includes("Timeout") || error.message.includes("Gateway")) {
+        refreshHistoryFromSaas();
+      }
     } finally {
       setGenerating(false);
       setAnalyzing(false);
@@ -399,6 +452,13 @@ export default function App() {
                 <HistoryIcon size={18} className="text-[#86868B]" />
                 <h2 className="font-semibold">历史记录</h2>
               </div>
+              <button 
+                onClick={refreshHistoryFromSaas}
+                className="p-1.5 hover:bg-[#F5F5F7] rounded-lg transition-colors text-[#86868B] hover:text-[#FF6B00]"
+                title="从云端刷新"
+              >
+                <RefreshCw size={14} />
+              </button>
             </div>
             
             {history.length === 0 ? (

@@ -6,19 +6,59 @@ export interface AnalysisResult {
   suggestedColor: string;
 }
 
+async function requestWithBetterErrorHandling(url: string, options: any) {
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (e) {
+    data = { message: text.slice(0, 300) };
+  }
+
+  if (response.status === 504) {
+    throw new Error("图片可能已生成，请刷新我的图片（Gateway Timeout）");
+  }
+
+  if (!response.ok || data.success === false) {
+    throw new Error(data.message || data.error || `请求失败: ${response.status}`);
+  }
+
+  return data;
+}
+
 export const analyzeProductImage = async (base64Image: string, userId?: string, toolId?: string): Promise<AnalysisResult> => {
-  const response = await fetch("/api/analyze", {
+  return requestWithBetterErrorHandling("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ base64Image, userId, toolId }),
   });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Analysis failed");
-  }
+};
 
-  return response.json();
+export const generateOneEcommerceImage = async (
+  base64Image: string,
+  style: string,
+  aspectRatio: string,
+  resolution: string,
+  perspective: string,
+  userId?: string,
+  toolId?: string
+): Promise<string> => {
+  const data = await requestWithBetterErrorHandling("/api/generate-one", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+      base64Image, 
+      style, 
+      aspectRatio, 
+      resolution, 
+      perspective,
+      userId,
+      toolId
+    }),
+  });
+
+  return data.imageUrl || data.image?.url;
 };
 
 export const generateEcommerceImages = async (
@@ -27,28 +67,42 @@ export const generateEcommerceImages = async (
   aspectRatio: string,
   resolution: string,
   userId?: string,
-  toolId?: string
+  toolId?: string,
+  onImageGenerated?: (url: string, index: number) => void
 ): Promise<string[]> => {
   const perspectives = ["正面视角", "俯拍视角", "特写视角"];
-  const response = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      base64Image, 
-      style, 
-      aspectRatio, 
-      resolution, 
-      perspectives,
-      userId,
-      toolId
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Generation failed");
+  const urls: string[] = [];
+  
+  for (let i = 0; i < perspectives.length; i++) {
+    try {
+      const url = await generateOneEcommerceImage(
+        base64Image,
+        style,
+        aspectRatio,
+        resolution,
+        perspectives[i],
+        userId,
+        toolId
+      );
+      urls.push(url);
+      if (onImageGenerated) {
+        onImageGenerated(url, i);
+      }
+    } catch (err) {
+      console.error(`Perspective ${perspectives[i]} failed`, err);
+      // Even if one fails, we continue if possible, or throw if essential
+      // For now, let's just re-throw to stop the sequence if a core failure occurs
+      throw err;
+    }
   }
 
-  const data = await response.json();
-  return data.images.map((img: any) => img.url);
+  return urls;
+};
+
+export const fetchSaasImages = async (userId: string): Promise<any[]> => {
+  const data = await requestWithBetterErrorHandling(`/api/upload/image?userId=${userId}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  return data.data || [];
 };
