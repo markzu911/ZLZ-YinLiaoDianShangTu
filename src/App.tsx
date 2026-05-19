@@ -227,6 +227,7 @@ export default function App() {
     setGenerating(true);
     setAnalyzing(true);
     setGeneratedImages([]);
+    setStep(3);
 
     try {
       // Analyze once
@@ -298,7 +299,6 @@ export default function App() {
       };
       setHistory(prev => [newItem, ...prev]);
       
-      setStep(3);
     } catch (error: any) {
       console.error("Generation failed", error);
       alert(`生成失败: ${error.message}`);
@@ -548,229 +548,300 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 relative space-y-12">
-        {/* Section 2: Params */}
-        <section className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-2 mb-6">
-            <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
-            <h2 className="text-lg font-bold">参数设置</h2>
-          </div>
-          
-          <div className="bg-[#F5F5F7] rounded-3xl p-8 space-y-8 border border-[#E5E5E5]">
-            {/* Style Selection */}
-            <div>
-              <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">整体视觉风格</h3>
-              <div className="flex flex-wrap gap-3">
-                {['现代简约', '奢华高级', '模特氛围'].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setStyle(s)}
-                    className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-white border border-[#D2D2D7] hover:border-[#FF6B00]'}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Canvas Ratio and Resolution */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">画布比例</h3>
-                <div className="grid grid-cols-4 gap-2">
-                  {['1:1', '3:4', '4:3', '16:9'].map(r => (
-                    <button
-                      key={r}
-                      onClick={() => setAspectRatio(r)}
-                      className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">输出分辨率</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {['1K', '2K', '4K'].map(res => (
-                    <button
-                      key={res}
-                      onClick={() => setResolution(res)}
-                      className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
-                    >
-                      {res}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={handleGenerate}
-              disabled={!uploadedImage || generating}
-              className="w-full py-5 bg-[#1D1D1F] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#2c2c2e] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-            >
-              {generating ? (
-                <RefreshCw className="animate-spin" />
-              ) : (
-                <Wand2 className="group-hover:rotate-12 transition-transform" />
-              )}
-              {generating ? 'AI 正在打造视觉大片...' : '立即开始生成主图'}
-            </button>
-          </div>
-
-          {generating && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center gap-4 py-8"
-            >
-              <div className="flex gap-1">
-                {[0, 1, 2].map(i => (
-                  <motion.div 
-                    key={i}
-                    animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
-                    transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
-                    className="w-2 h-2 rounded-full bg-[#FF6B00]"
-                  />
-                ))}
-              </div>
-              <p className="text-sm text-[#86868B] italic">
-                分析产品卖点中... 选取最佳构图... 背景渲染中...
-              </p>
-            </motion.div>
-          )}
-        </section>
-
-        {/* Section 3: Results */}
-        <AnimatePresence>
-          {generatedImages.length > 0 && (
+      <main className="flex-1 overflow-y-auto p-8 relative">
+        <AnimatePresence mode="wait">
+          {step === 2 && (
             <motion.section 
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="max-w-6xl mx-auto"
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-4xl mx-auto space-y-8"
             >
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">3</span>
-                  <h2 className="text-lg font-bold">生成结果与精修</h2>
-                </div>
-                
-                {/* Viewport Switcher */}
-                <div className="flex gap-2 bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5E5]">
-                  {["正面", "俯拍", "特写"].map((label, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedImageIndex(idx)}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${selectedImageIndex === idx ? 'bg-white text-[#FF6B00] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center gap-2 mb-6">
+                <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
+                <h2 className="text-lg font-bold">参数设置</h2>
               </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
-                {/* Result Preview */}
-                <div className="space-y-4">
-                  <div className="bg-[#F5F5F7] rounded-3xl p-6 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden">
-                    <canvas 
-                      ref={canvasRef} 
-                      className="max-w-full max-h-full rounded-xl shadow-2xl bg-white"
-                    />
-                    <div className="absolute top-4 left-4 bg-white/80 backdrop-blur text-xs px-3 py-1 rounded-full border border-black/5 flex items-center gap-2">
-                       <Check size={12} className="text-green-500" /> {["正面", "俯拍", "特写"][selectedImageIndex]}视角 渲染完成
-                    </div>
-                  </div>
-                  
-                  {/* Thumbnail Row */}
-                  <div className="flex gap-4 justify-center">
-                    {generatedImages.map((img, idx) => (
+              
+              <div className="bg-[#F5F5F7] rounded-3xl p-8 space-y-8 border border-[#E5E5E5]">
+                {/* Style Selection */}
+                <div>
+                  <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">整体视觉风格</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {['现代简约', '奢华高级', '模特氛围'].map(s => (
                       <button
-                        key={idx}
-                        onClick={() => setSelectedImageIndex(idx)}
-                        className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                        key={s}
+                        onClick={() => setStyle(s)}
+                        className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-white border border-[#D2D2D7] hover:border-[#FF6B00]'}`}
                       >
-                        <img src={toImageProxyUrl(img)} className="w-full h-full object-cover" />
+                        {s}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Edit Controls */}
-                <div className="space-y-6">
-                  <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 space-y-6 shadow-sm">
-                    <div>
-                      <h3 className="text-sm font-semibold mb-4">文本内容编辑</h3>
-                      <div className="space-y-4">
-                        {textItems.map((item, i) => {
-                          let label = "文案";
-                          if (i === 0) label = "主标题";
-                          else if (i === textItems.length - 1) label = "底部补充";
-                          else label = `卖点 ${i}`;
-
-                          return (
-                            <div key={item.id} className="space-y-1">
-                              <label className="text-[10px] font-bold text-[#86868B] uppercase px-1">{label}</label>
-                              <div className="flex gap-2 p-2 bg-[#F5F5F7] rounded-2xl border border-[#E5E5E5]">
-                                <input 
-                                  value={item.text} 
-                                  onChange={(e) => {
-                                    const newItems = [...textItems];
-                                    newItems[i].text = e.target.value;
-                                    setTextItems(newItems);
-                                  }}
-                                  className="flex-1 bg-white border border-[#D2D2D7] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none transition-all"
-                                />
-                                <button 
-                                  onClick={() => setTextItems(prev => prev.filter(t => t.id !== item.id))}
-                                  className="p-2 text-[#86868B] hover:text-red-500 bg-white border border-[#D2D2D7] rounded-xl"
-                                >
-                                   <X size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        <button 
-                          onClick={() => setTextItems(prev => [...prev, { id: Math.random().toString(), text: "新卖点", position: 'tc' }])}
-                          className="w-full py-3 border-2 border-dashed border-[#D2D2D7] rounded-xl text-xs font-semibold text-[#86868B] hover:border-[#FF6B00] hover:text-[#FF6B00] transition-all flex items-center justify-center gap-2"
+                {/* Canvas Ratio and Resolution */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">画布比例</h3>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['1:1', '3:4', '4:3', '16:9'].map(r => (
+                        <button
+                          key={r}
+                          onClick={() => setAspectRatio(r)}
+                          className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
                         >
-                          <Plus size={14} /> 添加文案
+                          {r}
                         </button>
-                      </div>
+                      ))}
                     </div>
-
-                    <div>
-                      <h4 className="text-xs font-semibold text-[#86868B] mb-2 uppercase">文字颜色</h4>
-                      <div className="flex gap-2">
-                        {['#FFFFFF', '#000000', analysis?.suggestedColor || '#FF6B00'].map(c => (
-                          <button 
-                            key={c}
-                            onClick={() => setTextColor(c)}
-                            style={{ backgroundColor: c }}
-                            className={`w-8 h-8 rounded-full border-2 transition-all ${textColor === c ? 'border-[#FF6B00] scale-110' : 'border-[#E5E5E5]'}`}
-                          />
-                        ))}
-                        <input 
-                          type="color" 
-                          value={textColor} 
-                          onChange={(e) => setTextColor(e.target.value)}
-                          className="w-8 h-8 rounded-full border-none p-0 overflow-hidden cursor-pointer bg-transparent"
-                        />
-                      </div>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">输出分辨率</h3>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['1K', '2K', '4K'].map(res => (
+                        <button
+                          key={res}
+                          onClick={() => setResolution(res)}
+                          className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                        >
+                          {res}
+                        </button>
+                      ))}
                     </div>
-
-                    <button 
-                      onClick={handleDownload}
-                      className="w-full py-4 bg-[#FF6B00] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#E66000] active:scale-[0.98] transition-all shadow-lg shadow-[#FF6B00]/30"
-                    >
-                      <Download size={20} />
-                      下载高清原图 (含文案)
-                    </button>
                   </div>
                 </div>
+
+                <button 
+                  onClick={handleGenerate}
+                  disabled={!uploadedImage || generating}
+                  className="w-full py-5 bg-[#1D1D1F] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#2c2c2e] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  {generating ? (
+                    <RefreshCw className="animate-spin" />
+                  ) : (
+                    <Wand2 className="group-hover:rotate-12 transition-transform" />
+                  )}
+                  {generating ? 'AI 正在打造视觉大片...' : '立即开始生成主图'}
+                </button>
               </div>
+            </motion.section>
+          )}
+
+          {step === 3 && (
+            <motion.section 
+              key="step3"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="max-w-6xl mx-auto space-y-8"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">3</span>
+                  <h2 className="text-lg font-bold">生成结果与精修</h2>
+                </div>
+                
+                <button 
+                  onClick={() => setStep(2)}
+                  className="text-sm text-[#86868B] hover:text-[#1D1D1F] flex items-center gap-1"
+                >
+                  <X size={14} /> 返回设置
+                </button>
+              </div>
+
+              {generating && generatedImages.length === 0 ? (
+                <div className="bg-[#F5F5F7] rounded-3xl min-h-[600px] flex flex-col items-center justify-center space-y-6 border border-[#E5E5E5] border-dashed">
+                  <div className="relative">
+                     <RefreshCw className="text-[#FF6B00] animate-spin w-16 h-16 opacity-30" />
+                     <div className="absolute inset-0 flex items-center justify-center">
+                        <Wand2 className="text-[#FF6B00] animate-pulse" size={32} />
+                     </div>
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-bold">AI 绘图中...</h3>
+                    <p className="text-[#86868B] max-w-xs">正在根据您的要求生成不同视角的电商大片，请稍后</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {[0, 1, 2].map(i => (
+                      <motion.div 
+                        key={i}
+                        animate={{ y: [0, -10, 0] }}
+                        transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
+                        className="w-2 h-2 rounded-full bg-[#FF6B00]"
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
+                  {/* Left Column: Canvas & Images */}
+                  <div className="space-y-6">
+                    <div className="bg-[#F5F5F7] rounded-3xl p-6 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group">
+                      <canvas 
+                        ref={canvasRef} 
+                        className="max-w-full max-h-full rounded-xl shadow-2xl bg-white transition-transform group-hover:scale-[1.01]"
+                      />
+                      
+                      {generating && (
+                        <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-3 border border-[#E5E5E5]">
+                           <RefreshCw size={16} className="text-[#FF6B00] animate-spin" />
+                           <span className="text-xs font-bold">后台继续生成中...</span>
+                        </div>
+                      )}
+
+                      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur text-xs px-3 py-1 rounded-full border border-black/5 flex items-center gap-2">
+                        {generatedImages.length > 0 && <Check size={12} className="text-green-500" />} 
+                        {["正面", "俯拍", "特写"][selectedImageIndex]}视角
+                      </div>
+                    </div>
+
+                    {/* Thumbnails & Perspective Switcher */}
+                    <div className="bg-white border border-[#E5E5E5] p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+                      <div className="flex gap-3">
+                        {[0, 1, 2].map(idx => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedImageIndex(idx)}
+                            disabled={!generatedImages[idx]}
+                            className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'} disabled:opacity-20`}
+                          >
+                            {generatedImages[idx] ? (
+                              <img src={toImageProxyUrl(generatedImages[idx])} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-[#F5F5F7] flex items-center justify-center">
+                                <RefreshCw className="animate-spin text-[#86868B]" size={16} />
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2 p-1 bg-[#F5F5F7] rounded-xl border border-[#E5E5E5]">
+                        {["正面视角", "俯拍视角", "特写视角"].map((label, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedImageIndex(idx)}
+                            disabled={!generatedImages[idx]}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedImageIndex === idx ? 'bg-white text-[#FF6B00] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'} disabled:opacity-50`}
+                          >
+                            {label.replace('视角', '')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Controls */}
+                  <div className="space-y-6">
+                    {/* Params (Step 2 Functions in Step 3) */}
+                    <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 space-y-4 shadow-sm">
+                      <h3 className="text-sm font-bold flex items-center gap-2">
+                        <Settings size={16} className="text-[#FF6B00]" /> 参数调整
+                      </h3>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">风格</label>
+                          <select 
+                            value={style} 
+                            onChange={(e) => setStyle(e.target.value)}
+                            className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
+                          >
+                            {['现代简约', '奢华高级', '模特氛围'].map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">比例</label>
+                            <select 
+                              value={aspectRatio} 
+                              onChange={(e) => setAspectRatio(e.target.value)}
+                              className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
+                            >
+                              {['1:1', '3:4', '4:3', '16:9'].map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">分辨率</label>
+                            <select 
+                              value={resolution} 
+                              onChange={(e) => setResolution(e.target.value)}
+                              className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
+                            >
+                              {['1K', '2K', '4K'].map(res => <option key={res} value={res}>{res}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleGenerate}
+                        disabled={generating}
+                        className="w-full py-3 bg-[#1D1D1F] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-black transition-all disabled:opacity-50"
+                      >
+                        {generating ? <RefreshCw className="animate-spin" size={14} /> : <Wand2 size={14} />}
+                        重新生成
+                      </button>
+                    </div>
+
+                    {/* Text Editor */}
+                    <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 space-y-6 shadow-sm">
+                      <div>
+                        <h3 className="text-sm font-bold mb-4">文案精修</h3>
+                        <div className="space-y-4">
+                          {textItems.map((item, i) => {
+                            let label = i === 0 ? "主标题" : i === textItems.length - 1 ? "底部信息" : `卖点 ${i}`;
+                            return (
+                              <div key={item.id} className="space-y-1">
+                                <label className="text-[10px] font-bold text-[#86868B] uppercase px-1">{label}</label>
+                                <div className="flex gap-2">
+                                  <input 
+                                    value={item.text} 
+                                    onChange={(e) => {
+                                      const newItems = [...textItems];
+                                      newItems[i].text = e.target.value;
+                                      setTextItems(newItems);
+                                    }}
+                                    className="flex-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-[10px] font-bold text-[#86868B] mb-2 uppercase">配色建议</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {['#FFFFFF', '#000000', analysis?.suggestedColor || '#FF6B00'].map(c => (
+                            <button 
+                              key={c}
+                              onClick={() => setTextColor(c)}
+                              style={{ backgroundColor: c }}
+                              className={`w-6 h-6 rounded-full border-2 transition-all ${textColor === c ? 'border-[#FF6B00] scale-110' : 'border-[#E5E5E5]'}`}
+                            />
+                          ))}
+                          <input 
+                            type="color" 
+                            value={textColor} 
+                            onChange={(e) => setTextColor(e.target.value)}
+                            className="w-6 h-6 rounded-full border-none p-0 overflow-hidden cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleDownload}
+                        className="w-full py-4 bg-[#FF6B00] text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#E66000] active:scale-[0.98] transition-all shadow-lg shadow-[#FF6B00]/30"
+                      >
+                        <Download size={18} /> 下载发布图
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.section>
           )}
         </AnimatePresence>
