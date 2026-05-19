@@ -99,8 +99,12 @@ export const generateEcommerceImages = async (
   return urls;
 };
 
-export const fetchSaasImages = async (userId: string): Promise<any[]> => {
-  const data = await requestWithBetterErrorHandling(`/api/upload/image?userId=${userId}`, {
+export const fetchSaasImages = async (userId: string, toolId?: string, source?: string): Promise<any[]> => {
+  let url = `/api/upload/image?userId=${userId}`;
+  if (toolId) url += `&toolId=${toolId}`;
+  if (source) url += `&source=${source}`;
+  
+  const data = await requestWithBetterErrorHandling(url, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
   });

@@ -39,7 +39,14 @@ interface HistoryItem {
   textItems?: TextItem[];
   textColor?: string;
   timestamp: number;
+  toolId?: string;
+  userId?: string;
+  projectType?: string;
+  source?: string;
 }
+
+const PROJECT_TYPE = "beverage-ecommerce-image-generator";
+const SOURCE = "beverage-ecommerce-result";
 
 export default function App() {
   const [saasInfo, setSaasInfo] = useState<{ userId: string; toolId: string } | null>(null);
@@ -66,6 +73,14 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const toImageProxyUrl = (url: string) => {
+    if (!url || url.startsWith('data:') || url.startsWith('/api/image-proxy')) return url;
+    if (url.startsWith('http')) {
+      return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
+
   // Load history from local storage
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -74,19 +89,28 @@ export default function App() {
         setSaasInfo({ userId, toolId });
         console.log('SaaS Initialized:', { userId, toolId });
         // Trigger initial refresh
-        fetchSaasImages(userId).then(saasImages => {
+        fetchSaasImages(userId, toolId, SOURCE).then(saasImages => {
            const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
             id: img.id,
             sourceImage: img.url,
             generatedImages: [img.url],
             analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
             params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-            timestamp: new Date(img.createdAt).getTime()
+            timestamp: new Date(img.createdAt).getTime(),
+            toolId: img.toolId || toolId,
+            userId: img.userId || userId,
+            projectType: PROJECT_TYPE,
+            source: SOURCE
           }));
           setHistory(prev => {
             const existingIds = new Set(prev.map(item => item.id));
             const newItems = saasHistory.filter(item => !existingIds.has(item.id));
-            return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+            return [...newItems, ...prev]
+              .filter(item => 
+                 (!toolId || item.toolId === toolId) && 
+                 item.projectType === PROJECT_TYPE
+              )
+              .sort((a, b) => b.timestamp - a.timestamp);
           });
         }).catch(console.error);
       }
@@ -105,20 +129,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('beverage_image_history');
+    const historyKey = saasInfo?.toolId ? `beverage_image_history_${saasInfo.toolId}` : 'beverage_image_history_local';
+    const savedHistory = localStorage.getItem(historyKey);
     if (savedHistory) {
       try {
-        setHistory(JSON.parse(savedHistory));
+        const parsed = JSON.parse(savedHistory);
+        // Filter out legacy or incorrect tool items if necessary
+        const filtered = parsed.filter((item: HistoryItem) => 
+          (!saasInfo?.toolId || item.toolId === saasInfo.toolId) &&
+          item.projectType === PROJECT_TYPE
+        );
+        setHistory(filtered);
       } catch (e) {
         console.error("Failed to load history", e);
       }
+    } else {
+      setHistory([]);
     }
-  }, []);
+  }, [saasInfo?.toolId]);
 
   // Save history
   useEffect(() => {
-    localStorage.setItem('beverage_image_history', JSON.stringify(history));
-  }, [history]);
+    const historyKey = saasInfo?.toolId ? `beverage_image_history_${saasInfo.toolId}` : 'beverage_image_history_local';
+    if (history.length > 0) {
+      localStorage.setItem(historyKey, JSON.stringify(history));
+    }
+  }, [history, saasInfo?.toolId]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -153,7 +189,7 @@ export default function App() {
   const refreshHistoryFromSaas = async () => {
     if (!saasInfo?.userId) return;
     try {
-      const saasImages = await fetchSaasImages(saasInfo.userId);
+      const saasImages = await fetchSaasImages(saasInfo.userId, saasInfo.toolId, SOURCE);
       // Map SaaS images to a format history can display (partial)
       // Since we don't have analysis/source, we'll mark them as remote
       const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
@@ -162,14 +198,23 @@ export default function App() {
         generatedImages: [img.url],
         analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
         params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-        timestamp: new Date(img.createdAt).getTime()
+        timestamp: new Date(img.createdAt).getTime(),
+        toolId: saasInfo.toolId,
+        userId: saasInfo.userId,
+        projectType: PROJECT_TYPE,
+        source: SOURCE
       }));
 
       // Merge with local history, avoiding duplicates by checking URL or ID
       setHistory(prev => {
         const existingIds = new Set(prev.map(item => item.id));
         const newItems = saasHistory.filter(item => !existingIds.has(item.id));
-        return [...newItems, ...prev].sort((a, b) => b.timestamp - a.timestamp);
+        return [...newItems, ...prev]
+          .filter(item => 
+            (!saasInfo.toolId || item.toolId === saasInfo.toolId) &&
+            item.projectType === PROJECT_TYPE
+          )
+          .sort((a, b) => b.timestamp - a.timestamp);
       });
     } catch (e) {
       console.error("Failed to refresh from SaaS", e);
@@ -245,7 +290,11 @@ export default function App() {
         params: { style, aspectRatio, resolution },
         textItems: initialTextItems,
         textColor: analysisResult.suggestedColor,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        toolId: saasInfo?.toolId,
+        userId: saasInfo?.userId,
+        projectType: PROJECT_TYPE,
+        source: SOURCE
       };
       setHistory(prev => [newItem, ...prev]);
       
@@ -271,7 +320,7 @@ export default function App() {
 
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = generatedImages[selectedImageIndex];
+    img.src = toImageProxyUrl(generatedImages[selectedImageIndex]);
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
@@ -434,7 +483,7 @@ export default function App() {
                 onChange={handleFileUpload} 
               />
               {uploadedImage ? (
-                <img src={uploadedImage} alt="Preview" className="w-full h-full object-contain p-2 rounded-2xl" />
+                <img src={toImageProxyUrl(uploadedImage)} alt="Preview" className="w-full h-full object-contain p-2 rounded-2xl" />
               ) : (
                 <div className="text-center p-4">
                   <Upload className="mx-auto mb-2 text-[#86868B]" />
@@ -472,7 +521,7 @@ export default function App() {
                   <div key={item.id} className="group relative bg-[#F5F5F7] rounded-xl p-2 cursor-pointer hover:bg-[#E8E8ED] transition-colors overflow-hidden flex gap-3">
                     <div className="relative">
                       <img 
-                        src={item.generatedImages[0]} 
+                        src={toImageProxyUrl(item.generatedImages[0])} 
                         className="w-16 h-16 object-cover rounded-lg bg-white" 
                         onClick={() => loadFromHistory(item)}
                       />
@@ -642,7 +691,7 @@ export default function App() {
                         onClick={() => setSelectedImageIndex(idx)}
                         className={`w-20 h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
                       >
-                        <img src={img} className="w-full h-full object-cover" />
+                        <img src={toImageProxyUrl(img)} className="w-full h-full object-cover" />
                       </button>
                     ))}
                   </div>

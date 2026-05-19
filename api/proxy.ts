@@ -30,13 +30,48 @@ export default async function handler(req: any, res: any) {
           ...req.headers,
           host: new URL(SAAS_ORIGIN).host, // Ensure correct host header
         },
-        body: req.method === "POST" ? JSON.stringify(req.body) : undefined,
+        body: (req.method === "POST" || req.method === "PUT") ? JSON.stringify(req.body) : undefined,
       });
 
       const data = await response.json();
       return res.status(response.status).json(data);
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // 1.5 Image Proxy
+  if (url.startsWith("/api/image-proxy")) {
+    try {
+      const queryParams = new URL(url, "http://localhost").searchParams;
+      const targetUrl = queryParams.get("url");
+
+      if (!targetUrl) {
+        return res.status(400).json({ message: "Missing url parameter" });
+      }
+
+      const decodedUrl = decodeURIComponent(targetUrl);
+      const urlObj = new URL(decodedUrl);
+
+      // Simple safety check
+      if (!['http:', 'https:'].includes(urlObj.protocol)) {
+        return res.status(400).json({ message: "Invalid protocol" });
+      }
+
+      const response = await fetch(decodedUrl);
+      if (!response.ok) {
+        return res.status(response.status).json({ message: `Image fetch failed: ${response.statusText}` });
+      }
+
+      const buffer = await response.arrayBuffer();
+      const contentType = response.headers.get("content-type") || "image/png";
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.status(200).send(Buffer.from(buffer));
+    } catch (error: any) {
+      return res.status(500).json({ message: error.message });
     }
   }
 
@@ -190,7 +225,7 @@ export default async function handler(req: any, res: any) {
       const tokenData = await saasFetch("/api/upload/direct-token", {
         method: "POST",
         body: JSON.stringify({
-          userId, toolId, source: "result", mimeType: "image/png", fileName: `result_${p}.png`, fileSize: buffer.byteLength
+          userId, toolId, source: "beverage-ecommerce-result", mimeType: "image/png", fileName: `result_${p}.png`, fileSize: buffer.byteLength
         }),
       });
 
@@ -203,7 +238,7 @@ export default async function handler(req: any, res: any) {
       const commitData = await saasFetch("/api/upload/commit", {
         method: "POST",
         body: JSON.stringify({
-          userId, toolId, source: "result", objectKey: tokenData.objectKey, fileSize: buffer.byteLength
+          userId, toolId, source: "beverage-ecommerce-result", objectKey: tokenData.objectKey, fileSize: buffer.byteLength
         }),
       });
 
