@@ -15,7 +15,8 @@ import {
   Download, 
   Trash2,
   RefreshCw,
-  Plus
+  Plus,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzeProductImage, generateEcommerceImages, AnalysisResult, fetchSaasImages } from './services/aiService';
@@ -50,7 +51,8 @@ const SOURCE = "beverage-ecommerce-result";
 
 export default function App() {
   const [saasInfo, setSaasInfo] = useState<{ userId: string; toolId: string } | null>(null);
-  const [step, setStep] = useState(2);
+  const [step, setStep] = useState(1);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -71,6 +73,7 @@ export default function App() {
   const [textColor, setTextColor] = useState('#FFFFFF');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainFileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const toImageProxyUrl = (url: string) => {
@@ -449,16 +452,54 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#F0F2F5] text-[#1D1D1F] font-sans overflow-hidden">
+    <div className="flex h-screen bg-[#F0F2F5] text-[#1D1D1F] font-sans overflow-hidden relative">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-[#E5E5E5] flex items-center justify-between px-4 z-50">
+        <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+          <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
+            <ImageIcon size={18} />
+          </span>
+          AI 饮品电商
+        </h1>
+        <button 
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 hover:bg-[#F5F5F7] rounded-full transition-colors"
+        >
+          <Menu size={24} />
+        </button>
+      </div>
+
+      {/* Sidebar Overlay for Mobile */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
-      <aside className="w-80 flex flex-col border-r border-[#E5E5E5] bg-white">
-        <div className="p-6 border-bottom border-[#E5E5E5]">
+      <aside className={`
+        fixed lg:relative inset-y-0 left-0 w-80 flex flex-col border-r border-[#E5E5E5] bg-white z-[70] transition-transform duration-300 transform
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        <div className="p-6 border-b border-[#E5E5E5] flex items-center justify-between">
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
               <ImageIcon size={20} />
             </span>
             AI 饮品电商
           </h1>
+          <button 
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 hover:bg-[#F5F5F7] rounded-full transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
@@ -518,26 +559,29 @@ export default function App() {
             ) : (
               <div className="space-y-3">
                 {history.map(item => (
-                  <div key={item.id} className="group relative bg-[#F5F5F7] rounded-xl p-2 cursor-pointer hover:bg-[#E8E8ED] transition-colors overflow-hidden flex gap-3">
-                    <div className="relative">
+                  <div key={item.id} className="group relative bg-[#F5F5F7] rounded-xl p-2 cursor-pointer hover:bg-[#E8E8ED] transition-colors overflow-hidden flex gap-3 min-h-[64px]">
+                    <div className="relative flex-shrink-0">
                       <img 
                         src={toImageProxyUrl(item.generatedImages[0])} 
-                        className="w-16 h-16 object-cover rounded-lg bg-white" 
+                        className="w-12 h-12 object-cover rounded-lg bg-white border border-[#E5E5E5]" 
                         onClick={() => loadFromHistory(item)}
                       />
-                      <div className="absolute -top-1 -right-1 bg-[#FF6B00] text-white text-[8px] px-1 rounded-full font-bold">
-                        3
+                      <div className="absolute -top-1 -right-1 bg-[#FF6B00] text-white text-[8px] px-1 rounded-full font-bold shadow-sm border border-white">
+                        {item.generatedImages.length}
                       </div>
                     </div>
-                    <div className="flex-1" onClick={() => loadFromHistory(item)}>
-                      <p className="text-xs font-semibold truncate">{item.analysis.productName}</p>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center" onClick={() => loadFromHistory(item)}>
+                      <p className="text-[11px] font-bold text-[#1D1D1F] truncate group-hover:text-[#FF6B00] transition-colors">{item.analysis.productName}</p>
                       <p className="text-[10px] text-[#86868B]">{new Date(item.timestamp).toLocaleDateString()}</p>
                     </div>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); removeFromHistory(item.id); }}
-                      className="absolute top-1 right-1 p-1 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity translate-x-2 group-hover:translate-x-0"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setHistory(prev => prev.filter(h => h.id !== item.id));
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:text-red-500 transition-all flex items-center"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))}
@@ -548,8 +592,91 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8 relative">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative pt-20 lg:pt-8">
         <AnimatePresence mode="wait">
+          {step === 1 && (
+            <motion.section 
+              key="step1"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-4xl mx-auto space-y-8"
+            >
+              <div className="text-center space-y-4 mb-12">
+                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">打造震撼视角的<span className="text-[#FF6B00]">饮品电商大片</span></h2>
+                <p className="text-[#86868B] text-lg max-w-2xl mx-auto">只需上传您的产品图片，我们的 AI 将自动分析卖点并生成多种风格的专业电商主图。</p>
+              </div>
+
+              <div className="flex items-center gap-2 mb-6">
+                <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">1</span>
+                <h2 className="text-lg font-bold">上传产品原图</h2>
+              </div>
+
+              <div 
+                onClick={() => mainFileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                className={`
+                  relative border-3 border-dashed rounded-[40px] aspect-video sm:aspect-[21/9] flex flex-col items-center justify-center cursor-pointer transition-all duration-500
+                  ${uploadedImage 
+                    ? 'border-[#FF6B00] bg-white shadow-2xl shadow-[#FF6B00]/10' 
+                    : 'border-[#D2D2D7] bg-white hover:border-[#FF6B00] hover:bg-[#FFF8F2] shadow-sm'}
+                `}
+              >
+                <input 
+                  type="file" 
+                  ref={mainFileInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleFileUpload} 
+                />
+                
+                {uploadedImage ? (
+                  <div className="relative w-full h-full p-8 flex items-center justify-center">
+                    <img 
+                      src={toImageProxyUrl(uploadedImage)} 
+                      alt="Preview" 
+                      className="max-w-full max-h-full object-contain rounded-2xl shadow-lg" 
+                    />
+                    <div className="absolute top-4 right-4 flex gap-2">
+                      <button 
+                         onClick={(e) => { e.stopPropagation(); setUploadedImage(null); }}
+                         className="p-3 bg-white/90 backdrop-blur rounded-full shadow-lg text-red-500 hover:bg-white transition-colors"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center p-8 space-y-4">
+                    <div className="w-20 h-20 bg-[#F5F5F7] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                      <Upload className="text-[#86868B]" size={32} />
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold">点击或将图片拖拽至此</p>
+                      <p className="text-[#86868B] mt-2">建议背景干净，产品位于中心（PNG/JPG/WEBP）</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {uploadedImage && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex justify-center"
+                >
+                  <button 
+                    onClick={() => setStep(2)}
+                    className="px-12 py-5 bg-[#FF6B00] text-white rounded-full font-bold text-lg shadow-xl shadow-[#FF6B00]/30 hover:bg-[#E66000] hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                  >
+                    准备好了，去设置参数 <Check size={20} />
+                  </button>
+                </motion.div>
+              )}
+            </motion.section>
+          )}
+
           {step === 2 && (
             <motion.section 
               key="step2"
@@ -558,21 +685,29 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="max-w-4xl mx-auto space-y-8"
             >
-              <div className="flex items-center gap-2 mb-6">
-                <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
-                <h2 className="text-lg font-bold">参数设置</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
+                  <h2 className="text-lg font-bold">参数设置</h2>
+                </div>
+                <button 
+                  onClick={() => setStep(1)}
+                  className="text-sm text-[#86868B] hover:text-[#1D1D1F] flex items-center gap-1"
+                >
+                  <X size={14} /> 重新上传
+                </button>
               </div>
               
-              <div className="bg-[#F5F5F7] rounded-3xl p-8 space-y-8 border border-[#E5E5E5]">
+              <div className="bg-[#F5F5F7] rounded-3xl p-4 sm:p-8 space-y-8 border border-[#E5E5E5]">
                 {/* Style Selection */}
                 <div>
                   <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">整体视觉风格</h3>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-wrap gap-2 sm:gap-3">
                     {['现代简约', '奢华高级', '模特氛围'].map(s => (
                       <button
                         key={s}
                         onClick={() => setStyle(s)}
-                        className={`px-6 py-3 rounded-full text-sm font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-white border border-[#D2D2D7] hover:border-[#FF6B00]'}`}
+                        className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-white border border-[#D2D2D7] hover:border-[#FF6B00]'}`}
                       >
                         {s}
                       </button>
@@ -581,15 +716,15 @@ export default function App() {
                 </div>
 
                 {/* Canvas Ratio and Resolution */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                   <div>
                     <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">画布比例</h3>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {['1:1', '3:4', '4:3', '16:9'].map(r => (
                         <button
                           key={r}
                           onClick={() => setAspectRatio(r)}
-                          className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                          className={`p-2.5 sm:p-3 rounded-xl text-center text-[10px] sm:text-xs font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
                         >
                           {r}
                         </button>
@@ -603,7 +738,7 @@ export default function App() {
                         <button
                           key={res}
                           onClick={() => setResolution(res)}
-                          className={`p-3 rounded-xl text-center text-xs font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                          className={`p-2.5 sm:p-3 rounded-xl text-center text-[10px] sm:text-xs font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
                         >
                           {res}
                         </button>
@@ -676,16 +811,16 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
                   {/* Left Column: Canvas & Images */}
                   <div className="space-y-6">
-                    <div className="bg-[#F5F5F7] rounded-3xl p-6 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group">
+                    <div className="bg-[#F5F5F7] rounded-3xl p-4 sm:p-6 flex flex-col items-center justify-center min-h-[300px] sm:min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group">
                       <canvas 
                         ref={canvasRef} 
-                        className="max-w-full max-h-full rounded-xl shadow-2xl bg-white transition-transform group-hover:scale-[1.01]"
+                        className="max-w-full max-h-[70vh] sm:max-h-full rounded-xl shadow-2xl bg-white transition-transform group-hover:scale-[1.01]"
                       />
                       
                       {generating && (
-                        <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-3 border border-[#E5E5E5]">
-                           <RefreshCw size={16} className="text-[#FF6B00] animate-spin" />
-                           <span className="text-xs font-bold">后台继续生成中...</span>
+                        <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 bg-white/90 backdrop-blur px-3 sm:px-4 py-1.5 sm:py-2 rounded-full shadow-lg flex items-center gap-2 sm:gap-3 border border-[#E5E5E5]">
+                           <RefreshCw size={14} className="text-[#FF6B00] animate-spin" />
+                           <span className="text-[10px] sm:text-xs font-bold">生成中...</span>
                         </div>
                       )}
 
@@ -696,33 +831,33 @@ export default function App() {
                     </div>
 
                     {/* Thumbnails & Perspective Switcher */}
-                    <div className="bg-white border border-[#E5E5E5] p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-                      <div className="flex gap-3">
+                    <div className="bg-white border border-[#E5E5E5] p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex gap-2 sm:gap-3 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
                         {[0, 1, 2].map(idx => (
                           <button
                             key={idx}
                             onClick={() => setSelectedImageIndex(idx)}
                             disabled={!generatedImages[idx]}
-                            className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'} disabled:opacity-20`}
+                            className={`relative flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'} disabled:opacity-20`}
                           >
                             {generatedImages[idx] ? (
                               <img src={toImageProxyUrl(generatedImages[idx])} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full bg-[#F5F5F7] flex items-center justify-center">
-                                <RefreshCw className="animate-spin text-[#86868B]" size={16} />
+                                <RefreshCw className="animate-spin text-[#86868B]" size={14} />
                               </div>
                             )}
                           </button>
                         ))}
                       </div>
 
-                      <div className="flex gap-2 p-1 bg-[#F5F5F7] rounded-xl border border-[#E5E5E5]">
+                      <div className="flex gap-1 p-1 bg-[#F5F5F7] rounded-xl border border-[#E5E5E5] w-full sm:w-auto overflow-x-auto">
                         {["正面视角", "俯拍视角", "特写视角"].map((label, idx) => (
                           <button
                             key={idx}
                             onClick={() => setSelectedImageIndex(idx)}
                             disabled={!generatedImages[idx]}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedImageIndex === idx ? 'bg-white text-[#FF6B00] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'} disabled:opacity-50`}
+                            className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${selectedImageIndex === idx ? 'bg-white text-[#FF6B00] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'} disabled:opacity-50`}
                           >
                             {label.replace('视角', '')}
                           </button>
