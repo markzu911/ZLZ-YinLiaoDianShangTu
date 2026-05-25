@@ -254,7 +254,7 @@ export default async function handler(req: any, res: any) {
         1. 构图与机位：竖构图，机位略微偏低，仰视角度，使产品显得高大挺拔。透视效果明显，体现立体感。
         2. 主体整合：将原始图片中的饮品产品无缝融入画面中央。产品表面应有光滑的质感和亮丽的高光反射。
         3. 辅助元素：画面中缠绕着几条深红色的丝带，丝带带有细微织物纹理，表面印有金色的品牌字样。丝带以动态的方式盘旋环绕在产品周围，增加画面的层次感和动感。
-        4. 背景与氛围：纯粹的、深红色的渐变背景，从画面中心向四周逐渐变深，营造出深邃感、神秘感—和聚焦感。
+        4. 背景与氛围：纯粹的、深红色的渐变背景，从画面中心向四周逐渐变深，营造出深邃感、神秘感和聚焦感。
         5. 光影：光源来自上方偏左前方，光线柔和且有方向性，在产品侧面形成明显的高光点。色温偏暖，色调以深红、金色为主。`;
       } else {
         // 模特氛围
@@ -316,15 +316,25 @@ export default async function handler(req: any, res: any) {
         return res.status(403).json({ success: false, message: consumeData.message || "扣费失败" });
       }
 
-      const commitData = await performSaasUpload(generatedBase64, userId, toolId, "beverage-ecommerce-result", `result_${p}.png`);
-
-      const resultImage = commitData.image || commitData;
-      return res.json({ 
-        success: true, 
-        image: resultImage,
-        imageUrl: resultImage.url 
-      });
+      try {
+        const commitData = await performSaasUpload(generatedBase64, userId, toolId, "beverage-ecommerce-result", `result_${p}.png`);
+        const resultImage = commitData.image || commitData;
+        return res.json({ 
+          success: true, 
+          image: resultImage,
+          imageUrl: resultImage.url 
+        });
+      } catch (uploadError: any) {
+         // Even if upload failed here, the image was generated. 
+         // But since we didn't return it yet, we just return the error.
+         console.error("Upload after generation failed", uploadError);
+         return res.status(500).json({ success: false, message: "图片已生成但保存失败，请稍后刷新尝试找回: " + uploadError.message });
+      }
     } catch (error: any) {
+      const errorMsg = error.message || "";
+      if (errorMsg.includes("fetch failed") || errorMsg.includes("timeout")) {
+        return res.status(504).json({ success: false, message: "网关超时：图片可能已生成，请刷新历史记录尝试查看。" });
+      }
       return res.status(500).json({ success: false, message: error.message });
     }
   }

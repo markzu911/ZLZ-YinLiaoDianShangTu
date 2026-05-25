@@ -336,10 +336,16 @@ export default function App() {
       
     } catch (error: any) {
       console.error("Generation failed", error);
-      alert(`生成失败: ${error.message}`);
-      // Refresh history if it's a timeout error
-      if (error.message.includes("Timeout") || error.message.includes("Gateway")) {
-        refreshHistoryFromSaas();
+      
+      const isTimeout = error.message.includes("Timeout") || error.message.includes("Gateway") || error.message.includes("504");
+      
+      if (isTimeout) {
+        // Explicitly handle timeout - tell user to check gallery
+        alert(`生成耗时较长（超时），图片可能已在后台生成中。请等待约 15 秒后点击底部的“同步云端”查看。`);
+        // Auto-attempt refresh after a short delay
+        setTimeout(() => refreshHistoryFromSaas(), 5000);
+      } else {
+        alert(`生成失败: ${error.message}`);
       }
     } finally {
       setGenerating(false);
