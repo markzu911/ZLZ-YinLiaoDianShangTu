@@ -632,7 +632,7 @@ export default function App() {
                     <div>
                       <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4">视觉风格</h3>
                       <div className="grid grid-cols-2 gap-2">
-                        {['现代简约', '奢华高级', '模特氛围', '清爽自然'].map(s => (
+                        {['现代简约', '奢华高级', '模特氛围'].map(s => (
                           <button
                             key={s}
                             onClick={() => setStyle(s)}
