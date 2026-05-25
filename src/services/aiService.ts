@@ -27,6 +27,53 @@ async function requestWithBetterErrorHandling(url: string, options: any) {
   return data;
 }
 
+export const launchTool = async (userId: string, toolId: string): Promise<any> => {
+  return requestWithBetterErrorHandling("/api/tool/launch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, toolId }),
+  });
+};
+
+export const verifyTool = async (userId: string, toolId: string): Promise<any> => {
+  return requestWithBetterErrorHandling("/api/tool/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, toolId }),
+  });
+};
+
+export const consumeTool = async (userId: string, toolId: string): Promise<any> => {
+  return requestWithBetterErrorHandling("/api/tool/consume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, toolId }),
+  });
+};
+
+/**
+ * Standard SaaS upload flow: Token -> PUT -> Commit
+ */
+export const uploadToSaas = async (
+  base64Image: string,
+  userId: string,
+  toolId: string,
+  source: string = "beverage-ecommerce-source",
+  fileName: string = "image.png"
+): Promise<string> => {
+  // 1. Get Direct Token
+  // Note: We'll call a helper endpoint in our proxy to avoid complex frontend logic
+  // or proxy it step by step if we prefer. 
+  // Let's assume the backend has a /api/proxy-upload to simplify.
+  const data = await requestWithBetterErrorHandling("/api/proxy-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64Image, userId, toolId, source, fileName }),
+  });
+  
+  return data.imageUrl || data.image?.url;
+};
+
 export const analyzeProductImage = async (base64Image: string, userId?: string, toolId?: string): Promise<AnalysisResult> => {
   return requestWithBetterErrorHandling("/api/analyze", {
     method: "POST",

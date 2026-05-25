@@ -15,16 +15,31 @@ import {
   Download, 
   Trash2,
   RefreshCw,
-  Plus,
-  Menu
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { analyzeProductImage, generateEcommerceImages, AnalysisResult, fetchSaasImages } from './services/aiService';
+import { analyzeProductImage, generateEcommerceImages, generateOneEcommerceImage, AnalysisResult, fetchSaasImages, launchTool, uploadToSaas } from './services/aiService';
 
 interface TextItem {
   id: string;
   text: string;
   position: string; // 'tl', 'tc', 'tr', 'rc', 'br', 'bc', 'bl', 'lc'
+}
+
+interface SaasData {
+  user: {
+    id: string;
+    name: string;
+    enterprise: string;
+    integral: number;
+    role: number;
+  };
+  tool: {
+    id: string;
+    name: string;
+    integral: number;
+    status: string;
+  };
 }
 
 interface HistoryItem {
@@ -51,14 +66,15 @@ const SOURCE = "beverage-ecommerce-result";
 
 export default function App() {
   const [saasInfo, setSaasInfo] = useState<{ userId: string; toolId: string } | null>(null);
+  const [saasData, setSaasData] = useState<SaasData | null>(null);
   const [step, setStep] = useState(1);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
   
   // Params
   const [style, setStyle] = useState('现代简约');
+  const [perspective, setPerspective] = useState('正面视角');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [resolution, setResolution] = useState('1K');
   
@@ -86,36 +102,49 @@ export default function App() {
 
   // Load history from local storage
   useEffect(() => {
+    const initializeSaas = async (userId: string, toolId: string) => {
+      setSaasInfo({ userId, toolId });
+      console.log('SaaS Initializing:', { userId, toolId });
+      
+      try {
+        const launchResult = await launchTool(userId, toolId);
+        if (launchResult.success) {
+          setSaasData(launchResult.data);
+        }
+      } catch (err) {
+        console.error('Launch failed', err);
+      }
+
+      fetchSaasImages(userId, toolId, SOURCE).then(saasImages => {
+        const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
+          id: img.id,
+          sourceImage: img.url,
+          generatedImages: [img.url],
+          analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
+          params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
+          timestamp: new Date(img.createdAt).getTime(),
+          toolId: img.toolId || toolId,
+          userId: img.userId || userId,
+          projectType: PROJECT_TYPE,
+          source: SOURCE
+        }));
+        setHistory(prev => {
+          const existingIds = new Set(prev.map(item => item.id));
+          const newItems = saasHistory.filter(item => !existingIds.has(item.id));
+          return [...newItems, ...prev]
+            .filter(item => 
+               (!toolId || item.toolId === toolId) && 
+               item.projectType === PROJECT_TYPE
+            )
+            .sort((a, b) => b.timestamp - a.timestamp);
+        });
+      }).catch(console.error);
+    };
+
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SAAS_INIT') {
         const { userId, toolId } = event.data;
-        setSaasInfo({ userId, toolId });
-        console.log('SaaS Initialized:', { userId, toolId });
-        // Trigger initial refresh
-        fetchSaasImages(userId, toolId, SOURCE).then(saasImages => {
-           const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
-            id: img.id,
-            sourceImage: img.url,
-            generatedImages: [img.url],
-            analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
-            params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-            timestamp: new Date(img.createdAt).getTime(),
-            toolId: img.toolId || toolId,
-            userId: img.userId || userId,
-            projectType: PROJECT_TYPE,
-            source: SOURCE
-          }));
-          setHistory(prev => {
-            const existingIds = new Set(prev.map(item => item.id));
-            const newItems = saasHistory.filter(item => !existingIds.has(item.id));
-            return [...newItems, ...prev]
-              .filter(item => 
-                 (!toolId || item.toolId === toolId) && 
-                 item.projectType === PROJECT_TYPE
-              )
-              .sort((a, b) => b.timestamp - a.timestamp);
-          });
-        }).catch(console.error);
+        initializeSaas(userId, toolId);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -125,7 +154,7 @@ export default function App() {
     const userId = params.get('userId');
     const toolId = params.get('toolId');
     if (userId && toolId) {
-      setSaasInfo({ userId, toolId });
+      initializeSaas(userId, toolId);
     }
 
     return () => window.removeEventListener('message', handleMessage);
@@ -166,7 +195,6 @@ export default function App() {
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
         setUploadedImage(base64);
-        setStep(2);
       };
       reader.readAsDataURL(file);
     }
@@ -183,7 +211,6 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setUploadedImage(event.target?.result as string);
-        setStep(2);
       };
       reader.readAsDataURL(file);
     }
@@ -230,7 +257,7 @@ export default function App() {
     setGenerating(true);
     setAnalyzing(true);
     setGeneratedImages([]);
-    setStep(3);
+    setStep(2);
 
     try {
       // Analyze once
@@ -267,29 +294,24 @@ export default function App() {
       setTextItems(initialTextItems);
       setTextColor(analysisResult.suggestedColor);
 
-      // Generate 3 images
-      const initialImages: string[] = [];
-      const ecomImages = await generateEcommerceImages(
-        uploadedImage, 
-        style, 
-        aspectRatio, 
-        resolution, 
-        saasInfo?.userId, 
-        saasInfo?.toolId,
-        (url, index) => {
-          setGeneratedImages(prev => {
-            const next = [...prev];
-            next[index] = url;
-            return next;
-          });
-          if (index === 0) setSelectedImageIndex(0);
-        }
+      // Generate ONE image with selected perspective
+      const imageUrl = await generateOneEcommerceImage(
+        uploadedImage,
+        style,
+        aspectRatio,
+        resolution,
+        perspective,
+        saasInfo?.userId,
+        saasInfo?.toolId
       );
+
+      setGeneratedImages([imageUrl]);
+      setSelectedImageIndex(0);
 
       const newItem: HistoryItem = {
         id: Date.now().toString(),
         sourceImage: uploadedImage,
-        generatedImages: ecomImages,
+        generatedImages: [imageUrl],
         analysis: analysisResult,
         params: { style, aspectRatio, resolution },
         textItems: initialTextItems,
@@ -301,6 +323,13 @@ export default function App() {
         source: SOURCE
       };
       setHistory(prev => [newItem, ...prev]);
+      
+      // Refresh credits
+      if (saasInfo?.userId && saasInfo?.toolId) {
+        launchTool(saasInfo.userId, saasInfo.toolId).then(res => {
+          if (res.success) setSaasData(res.data);
+        }).catch(console.error);
+      }
       
     } catch (error: any) {
       console.error("Generation failed", error);
@@ -448,232 +477,233 @@ export default function App() {
     setStyle(item.params.style);
     setAspectRatio(item.params.aspectRatio);
     setResolution(item.params.resolution);
-    setStep(3);
+    setStep(2);
   };
 
   return (
-    <div className="flex h-screen bg-[#F0F2F5] text-[#1D1D1F] font-sans overflow-hidden relative">
-      {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-[#E5E5E5] flex items-center justify-between px-4 z-50">
+    <div className="min-h-screen bg-[#F8F9FA] text-[#1D1D1F] font-sans pb-20">
+      {/* Universal Header */}
+      <header className="sticky top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] flex items-center justify-between px-6 z-50">
         <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
           <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
             <ImageIcon size={18} />
           </span>
           AI 饮品电商
         </h1>
-        <button 
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 hover:bg-[#F5F5F7] rounded-full transition-colors"
-        >
-          <Menu size={24} />
-        </button>
-      </div>
-
-      {/* Sidebar Overlay for Mobile */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sidebar */}
-      <aside className={`
-        fixed lg:relative inset-y-0 left-0 w-80 flex flex-col border-r border-[#E5E5E5] bg-white z-[70] transition-transform duration-300 transform
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        <div className="p-6 border-b border-[#E5E5E5] flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
-              <ImageIcon size={20} />
-            </span>
-            AI 饮品电商
-          </h1>
-          <button 
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 hover:bg-[#F5F5F7] rounded-full transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {/* Step 1: Upload */}
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-6 h-6 rounded-full bg-[#1D1D1F] text-white flex items-center justify-center text-xs font-bold">1</span>
-              <h2 className="font-semibold">产品上传与分析</h2>
-            </div>
-            
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              className={`relative border-2 border-dashed rounded-2xl aspect-square flex flex-col items-center justify-center cursor-pointer transition-all ${uploadedImage ? 'border-[#FF6B00] bg-[#FFF8F2]' : 'border-[#D2D2D7] hover:border-[#FF6B00]'}`}
-            >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept="image/*" 
-                onChange={handleFileUpload} 
-              />
-              {uploadedImage ? (
-                <img src={toImageProxyUrl(uploadedImage)} alt="Preview" className="w-full h-full object-contain p-2 rounded-2xl" />
-              ) : (
-                <div className="text-center p-4">
-                  <Upload className="mx-auto mb-2 text-[#86868B]" />
-                  <p className="text-sm font-medium">点击或拖拽上传</p>
-                  <p className="text-xs text-[#86868B] mt-1">支持 PNG, JPG</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* History */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <HistoryIcon size={18} className="text-[#86868B]" />
-                <h2 className="font-semibold">历史记录</h2>
-              </div>
-              <button 
-                onClick={refreshHistoryFromSaas}
-                className="p-1.5 hover:bg-[#F5F5F7] rounded-lg transition-colors text-[#86868B] hover:text-[#FF6B00]"
-                title="从云端刷新"
+        <div className="flex items-center gap-4">
+          <AnimatePresence mode="popLayout">
+            {saasData ? (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: -5 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="flex items-center gap-3 bg-white border border-[#E5E5E5] px-3 py-1.5 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-default group"
               >
-                <RefreshCw size={14} />
-              </button>
-            </div>
-            
-            {history.length === 0 ? (
-              <div className="text-center py-12 text-[#86868B]">
-                <RefreshCw size={32} className="mx-auto mb-2 opacity-20" />
-                <p className="text-xs">暂无历史记录</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {history.map(item => (
-                  <div key={item.id} className="group relative bg-[#F5F5F7] rounded-xl p-2 cursor-pointer hover:bg-[#E8E8ED] transition-colors overflow-hidden flex gap-3 min-h-[64px]">
-                    <div className="relative flex-shrink-0">
-                      <img 
-                        src={toImageProxyUrl(item.generatedImages[0])} 
-                        className="w-12 h-12 object-cover rounded-lg bg-white border border-[#E5E5E5]" 
-                        onClick={() => loadFromHistory(item)}
-                      />
-                      <div className="absolute -top-1 -right-1 bg-[#FF6B00] text-white text-[8px] px-1 rounded-full font-bold shadow-sm border border-white">
-                        {item.generatedImages.length}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col justify-center" onClick={() => loadFromHistory(item)}>
-                      <p className="text-[11px] font-bold text-[#1D1D1F] truncate group-hover:text-[#FF6B00] transition-colors">{item.analysis.productName}</p>
-                      <p className="text-[10px] text-[#86868B]">{new Date(item.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setHistory(prev => prev.filter(h => h.id !== item.id));
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:text-red-500 transition-all flex items-center"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                <div className="w-7 h-7 bg-gradient-to-br from-[#FF6B00] to-[#FF9500] rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm ring-2 ring-white">
+                  {saasData.user.name.charAt(0)}
+                </div>
+                <div className="flex flex-col pr-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold leading-none text-[#1D1D1F]">{saasData.user.name}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" title="已连接" />
                   </div>
-                ))}
-              </div>
+                  <div className="text-[8px] text-[#86868B] font-medium mt-1 flex items-center gap-1">
+                    <span>剩余积分:</span>
+                    <span className="text-[#FF6B00] font-extrabold flex items-center gap-0.5">
+                      {saasData.user.integral}
+                      <Wand2 size={8} className="group-hover:rotate-12 transition-transform" />
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            ) : saasInfo ? (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 bg-[#F5F5F7] px-3 py-1.5 rounded-full border border-[#E5E5E5]"
+              >
+                <div className="w-7 h-7 bg-[#E5E5E5] rounded-full animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="w-12 h-2 bg-[#E5E5E5] rounded animate-pulse" />
+                  <div className="w-16 h-2 bg-[#E5E5E5] rounded animate-pulse" />
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F5F5F7] text-[10px] font-bold text-[#86868B] border border-[#E5E5E5] cursor-help"
+                title="预览模式：登录以保存记录"
+              >
+                <Plus size={12} /> 游客身份
+              </motion.div>
             )}
-          </section>
+          </AnimatePresence>
+          
+          <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold text-[#86868B] uppercase tracking-widest bg-[#F5F5F7] px-3 py-1.5 rounded-full border border-[#E5E5E5]/50">
+            <span className={`transition-colors duration-300 ${step === 1 ? 'text-[#FF6B00]' : ''}`}>1. 上传</span>
+            <span className="opacity-20 font-light">/</span>
+            <span className={`transition-colors duration-300 ${step === 2 ? 'text-[#FF6B00]' : ''}`}>2. 生成</span>
+          </div>
         </div>
-      </aside>
+      </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-8 relative pt-20 lg:pt-8">
+      <main className="max-w-7xl mx-auto p-4 sm:p-8 relative">
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.section 
               key="step1"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="max-w-4xl mx-auto space-y-8"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-6xl mx-auto space-y-8"
             >
-              <div className="text-center space-y-4 mb-12">
-                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">打造震撼视角的<span className="text-[#FF6B00]">饮品电商大片</span></h2>
-                <p className="text-[#86868B] text-lg max-w-2xl mx-auto">只需上传您的产品图片，我们的 AI 将自动分析卖点并生成多种风格的专业电商主图。</p>
-              </div>
 
-              <div className="flex items-center gap-2 mb-6">
-                <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">1</span>
-                <h2 className="text-lg font-bold">上传产品原图</h2>
-              </div>
 
-              <div 
-                onClick={() => mainFileInputRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                className={`
-                  relative border-3 border-dashed rounded-[40px] aspect-video sm:aspect-[21/9] flex flex-col items-center justify-center cursor-pointer transition-all duration-500
-                  ${uploadedImage 
-                    ? 'border-[#FF6B00] bg-white shadow-2xl shadow-[#FF6B00]/10' 
-                    : 'border-[#D2D2D7] bg-white hover:border-[#FF6B00] hover:bg-[#FFF8F2] shadow-sm'}
-                `}
-              >
-                <input 
-                  type="file" 
-                  ref={mainFileInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={handleFileUpload} 
-                />
-                
-                {uploadedImage ? (
-                  <div className="relative w-full h-full p-8 flex items-center justify-center">
-                    <img 
-                      src={toImageProxyUrl(uploadedImage)} 
-                      alt="Preview" 
-                      className="max-w-full max-h-full object-contain rounded-2xl shadow-lg" 
-                    />
-                    <div className="absolute top-4 right-4 flex gap-2">
-                      <button 
-                         onClick={(e) => { e.stopPropagation(); setUploadedImage(null); }}
-                         className="p-3 bg-white/90 backdrop-blur rounded-full shadow-lg text-red-500 hover:bg-white transition-colors"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
+                {/* Left: Upload Area */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">1</span>
+                    <h2 className="text-lg font-bold">上传产品原图</h2>
                   </div>
-                ) : (
-                  <div className="text-center p-8 space-y-4">
-                    <div className="w-20 h-20 bg-[#F5F5F7] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                      <Upload className="text-[#86868B]" size={32} />
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold">点击或将图片拖拽至此</p>
-                      <p className="text-[#86868B] mt-2">建议背景干净，产品位于中心（PNG/JPG/WEBP）</p>
-                    </div>
-                  </div>
-                )}
-              </div>
 
-              {uploadedImage && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-center"
-                >
-                  <button 
-                    onClick={() => setStep(2)}
-                    className="px-12 py-5 bg-[#FF6B00] text-white rounded-full font-bold text-lg shadow-xl shadow-[#FF6B00]/30 hover:bg-[#E66000] hover:scale-105 active:scale-95 transition-all flex items-center gap-3"
+                  <div 
+                    onClick={() => mainFileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    className={`
+                      relative border-3 border-dashed rounded-[40px] aspect-video flex flex-col items-center justify-center cursor-pointer transition-all duration-500
+                      ${uploadedImage 
+                        ? 'border-[#FF6B00] bg-white shadow-2xl shadow-[#FF6B00]/10' 
+                        : 'border-[#D2D2D7] bg-white hover:border-[#FF6B00] hover:bg-[#FFF8F2] shadow-sm'}
+                    `}
                   >
-                    准备好了，去设置参数 <Check size={20} />
-                  </button>
-                </motion.div>
-              )}
+                    <input 
+                      type="file" 
+                      ref={mainFileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handleFileUpload} 
+                    />
+                    
+                    {uploadedImage ? (
+                      <div className="relative w-full h-full p-8 flex items-center justify-center">
+                        <img 
+                          src={toImageProxyUrl(uploadedImage)} 
+                          alt="Preview" 
+                          className="max-w-full max-h-full object-contain rounded-2xl shadow-lg" 
+                        />
+                        <div className="absolute top-4 right-4 flex gap-2">
+                          <button 
+                             onClick={(e) => { e.stopPropagation(); setUploadedImage(null); }}
+                             className="p-3 bg-white/90 backdrop-blur rounded-full shadow-lg text-red-500 hover:bg-white transition-colors"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center p-8 space-y-4">
+                        <div className="w-20 h-20 bg-[#F5F5F7] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                          <Upload className="text-[#86868B]" size={32} />
+                        </div>
+                        <div>
+                          <p className="text-xl font-bold">点击或将图片拖拽至此</p>
+                          <p className="text-[#86868B] mt-2">产品位于中心效果更佳</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Parameters */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
+                    <h2 className="text-lg font-bold">设置生成参数</h2>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-6 sm:p-8 space-y-6 border border-[#E5E5E5] shadow-sm">
+                    {/* Style Selection */}
+                    <div>
+                      <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4">视觉风格</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['现代简约', '奢华高级', '模特氛围', '清爽自然'].map(s => (
+                          <button
+                            key={s}
+                            onClick={() => setStyle(s)}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-[#F5F5F7] border border-transparent hover:border-[#FF6B00]'}`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Perspective Selection */}
+                    <div>
+                      <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4">拍摄视角</h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['正面视角', '俯拍视角', '特写视角'].map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setPerspective(p)}
+                            className={`py-2 rounded-xl text-[10px] font-bold border transition-all ${perspective === p ? 'border-[#FF6B00] bg-[#FFF8F2] text-[#FF6B00]' : 'border-transparent bg-[#F5F5F7] text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                          >
+                            {p.replace('视角', '')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Canvas Ratio */}
+                    <div>
+                      <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4">画布比例</h3>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['1:1', '3:4', '4:3', '16:9'].map(r => (
+                          <button
+                            key={r}
+                            onClick={() => setAspectRatio(r)}
+                            className={`py-2.5 rounded-xl text-[10px] font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-[#FFF8F2] text-[#FF6B00]' : 'border-transparent bg-[#F5F5F7] text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resolution Selection */}
+                    <div>
+                      <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4">输出分辨率</h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['1K', '2K', '4K'].map(res => (
+                          <button
+                            key={res}
+                            onClick={() => setResolution(res)}
+                            className={`py-2.5 rounded-xl text-[10px] font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-[#FFF8F2] text-[#FF6B00]' : 'border-transparent bg-[#F5F5F7] text-[#1D1D1F] hover:border-[#FF6B00]'}`}
+                          >
+                            {res}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleGenerate}
+                      disabled={!uploadedImage || generating}
+                      className="w-full py-4 mt-4 bg-[#1D1D1F] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#2c2c2e] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                      {generating ? (
+                        <RefreshCw className="animate-spin" size={18} />
+                      ) : (
+                        <Wand2 className="group-hover:rotate-12 transition-transform" />
+                      )}
+                      {generating ? '正在为您打造中...' : '立即生成商品图'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </motion.section>
           )}
 
@@ -682,110 +712,23 @@ export default function App() {
               key="step2"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="max-w-4xl mx-auto space-y-8"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
-                  <h2 className="text-lg font-bold">参数设置</h2>
-                </div>
-                <button 
-                  onClick={() => setStep(1)}
-                  className="text-sm text-[#86868B] hover:text-[#1D1D1F] flex items-center gap-1"
-                >
-                  <X size={14} /> 重新上传
-                </button>
-              </div>
-              
-              <div className="bg-[#F5F5F7] rounded-3xl p-4 sm:p-8 space-y-8 border border-[#E5E5E5]">
-                {/* Style Selection */}
-                <div>
-                  <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">整体视觉风格</h3>
-                  <div className="flex flex-wrap gap-2 sm:gap-3">
-                    {['现代简约', '奢华高级', '模特氛围'].map(s => (
-                      <button
-                        key={s}
-                        onClick={() => setStyle(s)}
-                        className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-medium transition-all ${style === s ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' : 'bg-white border border-[#D2D2D7] hover:border-[#FF6B00]'}`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Canvas Ratio and Resolution */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">画布比例</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {['1:1', '3:4', '4:3', '16:9'].map(r => (
-                        <button
-                          key={r}
-                          onClick={() => setAspectRatio(r)}
-                          className={`p-2.5 sm:p-3 rounded-xl text-center text-[10px] sm:text-xs font-bold border transition-all ${aspectRatio === r ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#86868B] uppercase tracking-wider mb-4">输出分辨率</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['1K', '2K', '4K'].map(res => (
-                        <button
-                          key={res}
-                          onClick={() => setResolution(res)}
-                          className={`p-2.5 sm:p-3 rounded-xl text-center text-[10px] sm:text-xs font-bold border transition-all ${resolution === res ? 'border-[#FF6B00] bg-white text-[#FF6B00]' : 'border-[#D2D2D7] bg-transparent text-[#1D1D1F] hover:border-[#FF6B00]'}`}
-                        >
-                          {res}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleGenerate}
-                  disabled={!uploadedImage || generating}
-                  className="w-full py-5 bg-[#1D1D1F] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#2c2c2e] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                >
-                  {generating ? (
-                    <RefreshCw className="animate-spin" />
-                  ) : (
-                    <Wand2 className="group-hover:rotate-12 transition-transform" />
-                  )}
-                  {generating ? 'AI 正在打造视觉大片...' : '立即开始生成主图'}
-                </button>
-              </div>
-            </motion.section>
-          )}
-
-          {step === 3 && (
-            <motion.section 
-              key="step3"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
               className="max-w-6xl mx-auto space-y-8"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">3</span>
-                  <h2 className="text-lg font-bold">生成结果与精修</h2>
-                </div>
-                
+              <div className="flex items-center justify-between">
                 <button 
-                  onClick={() => setStep(2)}
-                  className="text-sm text-[#86868B] hover:text-[#1D1D1F] flex items-center gap-1"
+                  onClick={() => setStep(1)}
+                  className="px-4 py-2 bg-white rounded-full text-sm font-bold text-[#86868B] hover:text-[#1D1D1F] flex items-center gap-2 border border-[#E5E5E5] transition-all shadow-sm"
                 >
-                  <X size={14} /> 返回设置
+                  <X size={16} /> 返回重设
                 </button>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#FF6B00] text-white flex items-center justify-center text-xs font-bold">2</span>
+                  <h2 className="text-lg font-bold">结果预览与精修</h2>
+                </div>
               </div>
 
               {generating && generatedImages.length === 0 ? (
-                <div className="bg-[#F5F5F7] rounded-3xl min-h-[600px] flex flex-col items-center justify-center space-y-6 border border-[#E5E5E5] border-dashed">
+                <div className="bg-white rounded-3xl min-h-[600px] flex flex-col items-center justify-center space-y-6 border border-[#E5E5E5] shadow-sm">
                   <div className="relative">
                      <RefreshCw className="text-[#FF6B00] animate-spin w-16 h-16 opacity-30" />
                      <div className="absolute inset-0 flex items-center justify-center">
@@ -793,154 +736,52 @@ export default function App() {
                      </div>
                   </div>
                   <div className="text-center space-y-2">
-                    <h3 className="text-xl font-bold">AI 绘图中...</h3>
-                    <p className="text-[#86868B] max-w-xs">正在根据您的要求生成不同视角的电商大片，请稍后</p>
-                  </div>
-                  <div className="flex gap-2">
-                    {[0, 1, 2].map(i => (
-                      <motion.div 
-                        key={i}
-                        animate={{ y: [0, -10, 0] }}
-                        transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
-                        className="w-2 h-2 rounded-full bg-[#FF6B00]"
-                      />
-                    ))}
+                    <h3 className="text-xl font-bold">AI 正在为您全力加速...</h3>
+                    <p className="text-[#86868B] max-w-xs">正在渲染您的专属视觉大片，请稍后片刻</p>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
-                  {/* Left Column: Canvas & Images */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
+                  {/* Left Column: Canvas Preview */}
                   <div className="space-y-6">
-                    <div className="bg-[#F5F5F7] rounded-3xl p-4 sm:p-6 flex flex-col items-center justify-center min-h-[300px] sm:min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group">
+                    <div className="bg-white rounded-[40px] p-4 sm:p-8 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group shadow-xl shadow-black/5">
                       <canvas 
                         ref={canvasRef} 
-                        className="max-w-full max-h-[70vh] sm:max-h-full rounded-xl shadow-2xl bg-white transition-transform group-hover:scale-[1.01]"
+                        className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl bg-white transition-transform group-hover:scale-[1.005]"
                       />
                       
                       {generating && (
-                        <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 bg-white/90 backdrop-blur px-3 sm:px-4 py-1.5 sm:py-2 rounded-full shadow-lg flex items-center gap-2 sm:gap-3 border border-[#E5E5E5]">
-                           <RefreshCw size={14} className="text-[#FF6B00] animate-spin" />
-                           <span className="text-[10px] sm:text-xs font-bold">生成中...</span>
+                        <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-3 border border-[#E5E5E5]">
+                           <RefreshCw size={16} className="text-[#FF6B00] animate-spin" />
+                           <span className="text-xs font-bold">重新生成中...</span>
                         </div>
                       )}
-
-                      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur text-xs px-3 py-1 rounded-full border border-black/5 flex items-center gap-2">
-                        {generatedImages.length > 0 && <Check size={12} className="text-green-500" />} 
-                        {["正面", "俯拍", "特写"][selectedImageIndex]}视角
-                      </div>
-                    </div>
-
-                    {/* Thumbnails & Perspective Switcher */}
-                    <div className="bg-white border border-[#E5E5E5] p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                      <div className="flex gap-2 sm:gap-3 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
-                        {[0, 1, 2].map(idx => (
-                          <button
-                            key={idx}
-                            onClick={() => setSelectedImageIndex(idx)}
-                            disabled={!generatedImages[idx]}
-                            className={`relative flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border-2 transition-all ${selectedImageIndex === idx ? 'border-[#FF6B00] scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'} disabled:opacity-20`}
-                          >
-                            {generatedImages[idx] ? (
-                              <img src={toImageProxyUrl(generatedImages[idx])} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full bg-[#F5F5F7] flex items-center justify-center">
-                                <RefreshCw className="animate-spin text-[#86868B]" size={14} />
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-1 p-1 bg-[#F5F5F7] rounded-xl border border-[#E5E5E5] w-full sm:w-auto overflow-x-auto">
-                        {["正面视角", "俯拍视角", "特写视角"].map((label, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setSelectedImageIndex(idx)}
-                            disabled={!generatedImages[idx]}
-                            className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${selectedImageIndex === idx ? 'bg-white text-[#FF6B00] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'} disabled:opacity-50`}
-                          >
-                            {label.replace('视角', '')}
-                          </button>
-                        ))}
-                      </div>
                     </div>
                   </div>
 
-                  {/* Right Column: Controls */}
+                  {/* Right Column: Refinement Tools */}
                   <div className="space-y-6">
-                    {/* Params (Step 2 Functions in Step 3) */}
-                    <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 space-y-4 shadow-sm">
-                      <h3 className="text-sm font-bold flex items-center gap-2">
-                        <Settings size={16} className="text-[#FF6B00]" /> 参数调整
-                      </h3>
-                      
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">风格</label>
-                          <select 
-                            value={style} 
-                            onChange={(e) => setStyle(e.target.value)}
-                            className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
-                          >
-                            {['现代简约', '奢华高级', '模特氛围'].map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">比例</label>
-                            <select 
-                              value={aspectRatio} 
-                              onChange={(e) => setAspectRatio(e.target.value)}
-                              className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
-                            >
-                              {['1:1', '3:4', '4:3', '16:9'].map(r => <option key={r} value={r}>{r}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider">分辨率</label>
-                            <select 
-                              value={resolution} 
-                              onChange={(e) => setResolution(e.target.value)}
-                              className="w-full mt-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
-                            >
-                              {['1K', '2K', '4K'].map(res => <option key={res} value={res}>{res}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      <button 
-                        onClick={handleGenerate}
-                        disabled={generating}
-                        className="w-full py-3 bg-[#1D1D1F] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-black transition-all disabled:opacity-50"
-                      >
-                        {generating ? <RefreshCw className="animate-spin" size={14} /> : <Wand2 size={14} />}
-                        重新生成
-                      </button>
-                    </div>
-
-                    {/* Text Editor */}
-                    <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 space-y-6 shadow-sm">
-                      <div>
-                        <h3 className="text-sm font-bold mb-4">文案精修</h3>
-                        <div className="space-y-4">
+                    {/* Text Refinement */}
+                    <div className="bg-white border border-[#E5E5E5] rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-bold flex items-center gap-2">
+                          <ImageIcon size={18} className="text-[#FF6B00]" /> 视觉文案精修
+                        </h3>
+                        <div className="space-y-5">
                           {textItems.map((item, i) => {
-                            let label = i === 0 ? "主标题" : i === textItems.length - 1 ? "底部信息" : `卖点 ${i}`;
+                            let label = i === 0 ? "主标题 (产品名)" : i === textItems.length - 1 ? "页脚声明" : `卖点宣传语 ${i}`;
                             return (
-                              <div key={item.id} className="space-y-1">
+                              <div key={item.id} className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-[#86868B] uppercase px-1">{label}</label>
-                                <div className="flex gap-2">
-                                  <input 
-                                    value={item.text} 
-                                    onChange={(e) => {
-                                      const newItems = [...textItems];
-                                      newItems[i].text = e.target.value;
-                                      setTextItems(newItems);
-                                    }}
-                                    className="flex-1 bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-2 text-sm focus:ring-2 focus:ring-[#FF6B00] outline-none"
-                                  />
-                                </div>
+                                <input 
+                                  value={item.text} 
+                                  onChange={(e) => {
+                                    const newItems = [...textItems];
+                                    newItems[i].text = e.target.value;
+                                    setTextItems(newItems);
+                                  }}
+                                  className="w-full bg-[#F5F5F7] border border-[#E5E5E5] rounded-xl p-3 text-sm font-medium focus:ring-2 focus:ring-[#FF6B00] outline-none transition-all"
+                                />
                               </div>
                             );
                           })}
@@ -948,35 +789,103 @@ export default function App() {
                       </div>
 
                       <div>
-                        <h4 className="text-[10px] font-bold text-[#86868B] mb-2 uppercase">配色建议</h4>
+                        <h4 className="text-[10px] font-bold text-[#86868B] mb-3 uppercase tracking-wider">文字配色</h4>
                         <div className="flex flex-wrap gap-2">
-                          {['#FFFFFF', '#000000', analysis?.suggestedColor || '#FF6B00'].map(c => (
+                          {['#FFFFFF', '#000000', analysis?.suggestedColor || '#FF6B00', '#F5E6CC', '#D4AF37'].map(c => (
                             <button 
                               key={c}
                               onClick={() => setTextColor(c)}
                               style={{ backgroundColor: c }}
-                              className={`w-6 h-6 rounded-full border-2 transition-all ${textColor === c ? 'border-[#FF6B00] scale-110' : 'border-[#E5E5E5]'}`}
+                              className={`w-8 h-8 rounded-full border-2 transition-all ${textColor === c ? 'border-[#FF6B00] scale-110 shadow-md' : 'border-[#E5E5E5] hover:scale-105'}`}
                             />
                           ))}
                           <input 
                             type="color" 
                             value={textColor} 
                             onChange={(e) => setTextColor(e.target.value)}
-                            className="w-6 h-6 rounded-full border-none p-0 overflow-hidden cursor-pointer"
+                            className="w-8 h-8 rounded-full border-none p-0 overflow-hidden cursor-pointer"
                           />
                         </div>
                       </div>
 
-                      <button 
-                        onClick={handleDownload}
-                        className="w-full py-4 bg-[#FF6B00] text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#E66000] active:scale-[0.98] transition-all shadow-lg shadow-[#FF6B00]/30"
-                      >
-                        <Download size={18} /> 下载发布图
-                      </button>
+                      <div className="pt-4 space-y-3">
+                        <button 
+                          onClick={handleDownload}
+                          className="w-full py-5 bg-[#FF6B00] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#E66000] active:scale-[0.98] transition-all shadow-xl shadow-[#FF6B00]/30"
+                        >
+                          <Download size={20} /> 下载高清无水印图
+                        </button>
+                        
+                        <button 
+                          onClick={handleGenerate}
+                          disabled={generating}
+                          className="w-full py-3 bg-[#F5F5F7] text-[#1D1D1F] border border-[#E5E5E5] rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-white transition-all disabled:opacity-50"
+                        >
+                          <RefreshCw className={generating ? 'animate-spin' : ''} size={14} /> 换一个试试
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* History Section at the bottom of Step 2 */}
+              <div className="pt-12 border-t border-[#E5E5E5]">
+                <div className="flex items-center justify-between mb-6">
+                   <div className="flex items-center gap-2">
+                     <HistoryIcon size={20} className="text-[#FF6B00]" />
+                     <h2 className="text-xl font-bold">历史生成记录</h2>
+                   </div>
+                   <button 
+                    onClick={refreshHistoryFromSaas}
+                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-[#E5E5E5] text-xs font-bold text-[#86868B] hover:text-[#FF6B00] transition-all shadow-sm"
+                   >
+                     <RefreshCw size={14} /> 同步云端
+                   </button>
+                </div>
+
+                {history.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-12 text-center border border-[#E5E5E5] border-dashed">
+                    <p className="text-[#86868B]">暂无历史记录，开始您的第一次创作吧</p>
+                  </div>
+                ) : (
+                  <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-hide">
+                    {history.map(item => (
+                      <motion.div 
+                        key={item.id}
+                        whileHover={{ y: -5 }}
+                        onClick={() => loadFromHistory(item)}
+                        className="flex-shrink-0 w-64 bg-white rounded-2xl p-3 border border-[#E5E5E5] cursor-pointer hover:shadow-xl hover:border-[#FF6B00]/30 transition-all group"
+                      >
+                        <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#F5F5F7]">
+                          <img 
+                            src={toImageProxyUrl(item.generatedImages[0])} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setHistory(prev => prev.filter(h => h.id !== item.id));
+                            }}
+                            className="absolute top-2 right-2 p-1.5 bg-white/90 backdrop-blur rounded-full text-[#86868B] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-[#1D1D1F] truncate group-hover:text-[#FF6B00] transition-colors">
+                            {item.analysis.productName}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#86868B] font-medium">{new Date(item.timestamp).toLocaleDateString()}</span>
+                            <span className="text-[10px] bg-[#F5F5F7] px-2 py-0.5 rounded-full font-bold text-[#86868B]">{item.params.style}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </motion.section>
           )}
         </AnimatePresence>

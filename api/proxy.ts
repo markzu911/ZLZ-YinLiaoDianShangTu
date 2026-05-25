@@ -114,6 +114,56 @@ export default async function handler(req: any, res: any) {
     return data;
   }
 
+  // Helper to handle the 3-step SaaS upload
+  async function performSaasUpload(base64Image: string, userId: string, toolId: string, source: string, fileName: string) {
+    const buffer = Buffer.from(base64Image.split(',')[1] || base64Image, 'base64');
+    
+    // 1. Token
+    const tokenData = await saasFetch("/api/upload/direct-token", {
+      method: "POST",
+      body: JSON.stringify({
+        userId, toolId, source, mimeType: "image/png", fileName, fileSize: buffer.byteLength
+      }),
+    });
+
+    if (!tokenData.uploadUrl) throw new Error("Failed to get upload URL from SaaS: " + JSON.stringify(tokenData));
+
+    // 2. PUT
+    const uploadResponse = await fetch(tokenData.uploadUrl, {
+      method: "PUT",
+      headers: tokenData.headers || { "Content-Type": "image/png" },
+      body: buffer
+    });
+
+    if (!uploadResponse.ok) throw new Error("Failed to upload to storage: " + uploadResponse.statusText);
+
+    // 3. Commit
+    const commitData = await saasFetch("/api/upload/commit", {
+      method: "POST",
+      body: JSON.stringify({
+        userId, toolId, source, objectKey: tokenData.objectKey, fileSize: buffer.byteLength
+      }),
+    });
+
+    return commitData;
+  }
+
+  // Convenience endpoint for frontend to upload in one step
+  if (url === "/api/proxy-upload") {
+    const { base64Image, userId, toolId, source, fileName } = req.body;
+    try {
+      const result = await performSaasUpload(base64Image, userId, toolId, source || "beverage-ecommerce-source", fileName || "source.png");
+      const resultImage = result.image || result;
+      return res.json({ 
+        success: true, 
+        image: resultImage,
+        imageUrl: resultImage.url 
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   if (url === "/api/analyze" || url === "/api/gemini") {
     const { base64Image, userId, toolId } = req.body;
     try {
@@ -225,31 +275,16 @@ export default async function handler(req: any, res: any) {
       }
 
       // Consume and Upload steps
-      await saasFetch("/api/tool/consume", {
+      const consumeData = await saasFetch("/api/tool/consume", {
         method: "POST",
         body: JSON.stringify({ userId, toolId }),
       });
 
-      const buffer = Buffer.from(generatedBase64, 'base64');
-      const tokenData = await saasFetch("/api/upload/direct-token", {
-        method: "POST",
-        body: JSON.stringify({
-          userId, toolId, source: "beverage-ecommerce-result", mimeType: "image/png", fileName: `result_${p}.png`, fileSize: buffer.byteLength
-        }),
-      });
+      if (!consumeData.success) {
+        return res.status(403).json({ success: false, message: consumeData.message || "扣费失败" });
+      }
 
-      await fetch(tokenData.uploadUrl, {
-        method: "PUT",
-        headers: tokenData.headers || { "Content-Type": "image/png" },
-        body: buffer
-      });
-
-      const commitData = await saasFetch("/api/upload/commit", {
-        method: "POST",
-        body: JSON.stringify({
-          userId, toolId, source: "beverage-ecommerce-result", objectKey: tokenData.objectKey, fileSize: buffer.byteLength
-        }),
-      });
+      const commitData = await performSaasUpload(generatedBase64, userId, toolId, "beverage-ecommerce-result", `result_${p}.png`);
 
       const resultImage = commitData.image || commitData;
       return res.json({ 
