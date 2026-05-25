@@ -116,25 +116,27 @@ export default function App() {
       }
 
       fetchSaasImages(userId, toolId, SOURCE).then(saasImages => {
-        const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
-          id: img.id,
-          sourceImage: img.url,
-          generatedImages: [img.url],
-          analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
-          params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-          timestamp: new Date(img.createdAt).getTime(),
-          toolId: img.toolId || toolId,
-          userId: img.userId || userId,
-          projectType: PROJECT_TYPE,
-          source: SOURCE
-        }));
+        const saasHistory: HistoryItem[] = saasImages
+          .filter((img: any) => img.source === SOURCE) // Ensure we only show images for this specific project
+          .map((img: any) => ({
+            id: img.id,
+            sourceImage: img.url,
+            generatedImages: [img.url],
+            analysis: { productName: img.fileName || "生成图", sellingPoints: [], suggestedColor: "#FFFFFF" },
+            params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
+            timestamp: new Date(img.createdAt).getTime(),
+            toolId: img.toolId || toolId,
+            userId: img.userId || userId,
+            projectType: PROJECT_TYPE,
+            source: img.source || SOURCE
+          }));
         setHistory(prev => {
           const existingIds = new Set(prev.map(item => item.id));
           const newItems = saasHistory.filter(item => !existingIds.has(item.id));
           return [...newItems, ...prev]
             .filter(item => 
                (!toolId || item.toolId === toolId) && 
-               item.projectType === PROJECT_TYPE
+               item.source === SOURCE
             )
             .sort((a, b) => b.timestamp - a.timestamp);
         });
@@ -169,7 +171,7 @@ export default function App() {
         // Filter out legacy or incorrect tool items if necessary
         const filtered = parsed.filter((item: HistoryItem) => 
           (!saasInfo?.toolId || item.toolId === saasInfo.toolId) &&
-          item.projectType === PROJECT_TYPE
+          item.source === SOURCE
         );
         setHistory(filtered);
       } catch (e) {
@@ -221,19 +223,20 @@ export default function App() {
     try {
       const saasImages = await fetchSaasImages(saasInfo.userId, saasInfo.toolId, SOURCE);
       // Map SaaS images to a format history can display (partial)
-      // Since we don't have analysis/source, we'll mark them as remote
-      const saasHistory: HistoryItem[] = saasImages.map((img: any) => ({
-        id: img.id,
-        sourceImage: img.url, // Fallback
-        generatedImages: [img.url],
-        analysis: { productName: img.fileName || "远程图片", sellingPoints: [], suggestedColor: "#FFFFFF" },
-        params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-        timestamp: new Date(img.createdAt).getTime(),
-        toolId: saasInfo.toolId,
-        userId: saasInfo.userId,
-        projectType: PROJECT_TYPE,
-        source: SOURCE
-      }));
+      const saasHistory: HistoryItem[] = saasImages
+        .filter((img: any) => img.source === SOURCE)
+        .map((img: any) => ({
+          id: img.id,
+          sourceImage: img.url,
+          generatedImages: [img.url],
+          analysis: { productName: img.fileName || "生成图", sellingPoints: [], suggestedColor: "#FFFFFF" },
+          params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
+          timestamp: new Date(img.createdAt).getTime(),
+          toolId: saasInfo.toolId,
+          userId: saasInfo.userId,
+          projectType: PROJECT_TYPE,
+          source: img.source || SOURCE
+        }));
 
       // Merge with local history, avoiding duplicates by checking URL or ID
       setHistory(prev => {
@@ -242,7 +245,7 @@ export default function App() {
         return [...newItems, ...prev]
           .filter(item => 
             (!saasInfo.toolId || item.toolId === saasInfo.toolId) &&
-            item.projectType === PROJECT_TYPE
+            item.source === SOURCE
           )
           .sort((a, b) => b.timestamp - a.timestamp);
       });
