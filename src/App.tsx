@@ -82,7 +82,7 @@ export default function App() {
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
-  // Initialize state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   
   // Text Editor State
@@ -655,12 +655,21 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
                   {/* Left Column: Canvas Preview */}
                   <div className="space-y-6">
-                    <div className="bg-white rounded-[40px] p-4 sm:p-8 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group shadow-xl shadow-black/5">
+                    <div 
+                      onClick={() => !generating && generatedImages.length > 0 && setIsPreviewOpen(true)}
+                      className="bg-white rounded-[40px] p-4 sm:p-8 flex flex-col items-center justify-center min-h-[500px] border border-[#E5E5E5] relative overflow-hidden group shadow-xl shadow-black/5 cursor-zoom-in"
+                    >
                       <canvas 
                         ref={canvasRef} 
-                        className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl bg-white transition-transform group-hover:scale-[1.005]"
+                        className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl bg-white transition-transform group-hover:scale-[1.01]"
                       />
                       
+                      <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2 border border-[#E5E5E5] text-[10px] font-bold">
+                           <Wand2 size={12} className="text-[#FF6B00]" /> 点击全屏预览
+                        </div>
+                      </div>
+
                       {generating && (
                         <div className="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-3 border border-[#E5E5E5]">
                            <RefreshCw size={16} className="text-[#FF6B00] animate-spin" />
@@ -804,6 +813,51 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Full Screen Preview Modal */}
+      <AnimatePresence>
+        {isPreviewOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 sm:p-12"
+            onClick={() => setIsPreviewOpen(false)}
+          >
+            <motion.button 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10"
+              onClick={() => setIsPreviewOpen(false)}
+            >
+              <X size={24} />
+            </motion.button>
+
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative max-w-full max-h-full flex items-center justify-center p-4 bg-white/5 rounded-3xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img 
+                src={canvasRef.current?.toDataURL('image/png')} 
+                alt="Full Preview" 
+                className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              />
+              
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+                <button 
+                  onClick={handleDownload}
+                  className="px-6 py-3 bg-[#FF6B00] text-white rounded-full font-bold flex items-center gap-2 shadow-xl hover:bg-[#E66000] active:scale-95 transition-all"
+                >
+                  <Download size={18} /> 下载这张图片
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
