@@ -306,7 +306,7 @@ export default async function handler(req: any, res: any) {
         return res.status(500).json({ success: false, message: "AI failed to generate image" });
       }
 
-      // Consume and Upload steps
+      // 3. Consume Credits
       const consumeData = await saasFetch("/api/tool/consume", {
         method: "POST",
         body: JSON.stringify({ userId, toolId }),
@@ -316,20 +316,12 @@ export default async function handler(req: any, res: any) {
         return res.status(403).json({ success: false, message: consumeData.message || "扣费失败" });
       }
 
-      try {
-        const commitData = await performSaasUpload(generatedBase64, userId, toolId, "beverage-ecommerce-result", `result_${p}.png`);
-        const resultImage = commitData.image || commitData;
-        return res.json({ 
-          success: true, 
-          image: resultImage,
-          imageUrl: resultImage.url 
-        });
-      } catch (uploadError: any) {
-         // Even if upload failed here, the image was generated. 
-         // But since we didn't return it yet, we just return the error.
-         console.error("Upload after generation failed", uploadError);
-         return res.status(500).json({ success: false, message: "图片已生成但保存失败，请稍后刷新尝试找回: " + uploadError.message });
-      }
+      // Return BASE64 directly as requested for "memory only" history
+      const base64Data = `data:image/png;base64,${generatedBase64}`;
+      return res.json({ 
+        success: true, 
+        imageUrl: base64Data 
+      });
     } catch (error: any) {
       const errorMsg = error.message || "";
       if (errorMsg.includes("fetch failed") || errorMsg.includes("timeout")) {

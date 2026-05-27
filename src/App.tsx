@@ -44,21 +44,20 @@ interface SaasData {
 
 interface HistoryItem {
   id: string;
-  sourceImage: string;
-  generatedImages: string[]; // Store 3 images
-  analysis: AnalysisResult;
+  time: string;
+  img: string;        // Base64
+  angle: string;
+  prompt: string;
   params: {
     style: string;
     aspectRatio: string;
     resolution: string;
   };
-  textItems?: TextItem[];
-  textColor?: string;
-  timestamp: number;
-  toolId?: string;
-  userId?: string;
-  projectType?: string;
-  source?: string;
+  // Internal fields for app functionality
+  sourceImage: string;
+  analysis: AnalysisResult;
+  textItems: TextItem[];
+  textColor: string;
 }
 
 const PROJECT_TYPE = "beverage-ecommerce-image-generator";
@@ -82,6 +81,8 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  
+  // Initialize state
   const [history, setHistory] = useState<HistoryItem[]>([]);
   
   // Text Editor State
@@ -99,8 +100,8 @@ export default function App() {
     }
     return url;
   };
-
-  // Load history from local storage
+  
+  // Load history strictly from cloud
   useEffect(() => {
     const initializeSaas = async (userId: string, toolId: string) => {
       setSaasInfo({ userId, toolId });
@@ -114,33 +115,6 @@ export default function App() {
       } catch (err) {
         console.error('Launch failed', err);
       }
-
-      fetchSaasImages(userId, toolId, SOURCE).then(saasImages => {
-        const saasHistory: HistoryItem[] = saasImages
-          .filter((img: any) => img.source === SOURCE) // Ensure we only show images for this specific project
-          .map((img: any) => ({
-            id: img.id,
-            sourceImage: img.url,
-            generatedImages: [img.url],
-            analysis: { productName: img.fileName || "生成图", sellingPoints: [], suggestedColor: "#FFFFFF" },
-            params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-            timestamp: new Date(img.createdAt).getTime(),
-            toolId: img.toolId || toolId,
-            userId: img.userId || userId,
-            projectType: PROJECT_TYPE,
-            source: img.source || SOURCE
-          }));
-        setHistory(prev => {
-          const existingIds = new Set(prev.map(item => item.id));
-          const newItems = saasHistory.filter(item => !existingIds.has(item.id));
-          return [...newItems, ...prev]
-            .filter(item => 
-               (!toolId || item.toolId === toolId) && 
-               item.source === SOURCE
-            )
-            .sort((a, b) => b.timestamp - a.timestamp);
-        });
-      }).catch(console.error);
     };
 
     const handleMessage = (event: MessageEvent) => {
@@ -161,34 +135,6 @@ export default function App() {
 
     return () => window.removeEventListener('message', handleMessage);
   }, []);
-
-  useEffect(() => {
-    const historyKey = saasInfo?.toolId ? `beverage_image_history_${saasInfo.toolId}` : 'beverage_image_history_local';
-    const savedHistory = localStorage.getItem(historyKey);
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory);
-        // Filter out legacy or incorrect tool items if necessary
-        const filtered = parsed.filter((item: HistoryItem) => 
-          (!saasInfo?.toolId || item.toolId === saasInfo.toolId) &&
-          item.source === SOURCE
-        );
-        setHistory(filtered);
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
-    } else {
-      setHistory([]);
-    }
-  }, [saasInfo?.toolId]);
-
-  // Save history
-  useEffect(() => {
-    const historyKey = saasInfo?.toolId ? `beverage_image_history_${saasInfo.toolId}` : 'beverage_image_history_local';
-    if (history.length > 0) {
-      localStorage.setItem(historyKey, JSON.stringify(history));
-    }
-  }, [history, saasInfo?.toolId]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -215,42 +161,6 @@ export default function App() {
         setUploadedImage(event.target?.result as string);
       };
       reader.readAsDataURL(file);
-    }
-  };
-
-  const refreshHistoryFromSaas = async () => {
-    if (!saasInfo?.userId) return;
-    try {
-      const saasImages = await fetchSaasImages(saasInfo.userId, saasInfo.toolId, SOURCE);
-      // Map SaaS images to a format history can display (partial)
-      const saasHistory: HistoryItem[] = saasImages
-        .filter((img: any) => img.source === SOURCE)
-        .map((img: any) => ({
-          id: img.id,
-          sourceImage: img.url,
-          generatedImages: [img.url],
-          analysis: { productName: img.fileName || "生成图", sellingPoints: [], suggestedColor: "#FFFFFF" },
-          params: { style: '未知', aspectRatio: '1:1', resolution: '1K' },
-          timestamp: new Date(img.createdAt).getTime(),
-          toolId: saasInfo.toolId,
-          userId: saasInfo.userId,
-          projectType: PROJECT_TYPE,
-          source: img.source || SOURCE
-        }));
-
-      // Merge with local history, avoiding duplicates by checking URL or ID
-      setHistory(prev => {
-        const existingIds = new Set(prev.map(item => item.id));
-        const newItems = saasHistory.filter(item => !existingIds.has(item.id));
-        return [...newItems, ...prev]
-          .filter(item => 
-            (!saasInfo.toolId || item.toolId === saasInfo.toolId) &&
-            item.source === SOURCE
-          )
-          .sort((a, b) => b.timestamp - a.timestamp);
-      });
-    } catch (e) {
-      console.error("Failed to refresh from SaaS", e);
     }
   };
 
@@ -313,17 +223,15 @@ export default function App() {
 
       const newItem: HistoryItem = {
         id: Date.now().toString(),
-        sourceImage: uploadedImage,
-        generatedImages: [imageUrl],
-        analysis: analysisResult,
+        time: new Date().toLocaleString(),
+        img: imageUrl,
+        angle: perspective,
+        prompt: `风格：${style}`,
         params: { style, aspectRatio, resolution },
+        sourceImage: uploadedImage,
+        analysis: analysisResult,
         textItems: initialTextItems,
-        textColor: analysisResult.suggestedColor,
-        timestamp: Date.now(),
-        toolId: saasInfo?.toolId,
-        userId: saasInfo?.userId,
-        projectType: PROJECT_TYPE,
-        source: SOURCE
+        textColor: analysisResult.suggestedColor
       };
       setHistory(prev => [newItem, ...prev]);
       
@@ -340,10 +248,8 @@ export default function App() {
       const isTimeout = error.message.includes("Timeout") || error.message.includes("Gateway") || error.message.includes("504");
       
       if (isTimeout) {
-        // Explicitly handle timeout - tell user to check gallery
-        alert(`生成耗时较长（超时），图片可能已在后台生成中。请等待约 15 秒后点击底部的“同步云端”查看。`);
-        // Auto-attempt refresh after a short delay
-        setTimeout(() => refreshHistoryFromSaas(), 5000);
+        // Explicitly handle timeout
+        alert(`生成耗时较长（超时），请稍候刷新重试。`);
       } else {
         alert(`生成失败: ${error.message}`);
       }
@@ -474,15 +380,11 @@ export default function App() {
 
   const loadFromHistory = (item: HistoryItem) => {
     setUploadedImage(item.sourceImage);
-    setGeneratedImages(item.generatedImages);
+    setGeneratedImages([item.img]);
     setSelectedImageIndex(0);
     setAnalysis(item.analysis);
-    setTextItems(item.textItems || (item.analysis.sellingPoints || []).map(sp => ({ 
-      id: Math.random().toString(), 
-      text: typeof sp === 'string' ? sp : (sp as any).text, 
-      position: typeof sp === 'string' ? 'tr' : (sp as any).position 
-    })));
-    setTextColor(item.textColor || item.analysis.suggestedColor);
+    setTextItems(item.textItems);
+    setTextColor(item.textColor);
     setStyle(item.params.style);
     setAspectRatio(item.params.aspectRatio);
     setResolution(item.params.resolution);
@@ -843,19 +745,19 @@ export default function App() {
                 <div className="flex items-center justify-between mb-6">
                    <div className="flex items-center gap-2">
                      <HistoryIcon size={20} className="text-[#FF6B00]" />
-                     <h2 className="text-xl font-bold">历史生成记录</h2>
+                     <h2 className="text-xl font-bold">本地本次生成记录</h2>
                    </div>
                    <button 
-                    onClick={refreshHistoryFromSaas}
-                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-[#E5E5E5] text-xs font-bold text-[#86868B] hover:text-[#FF6B00] transition-all shadow-sm"
+                    onClick={() => setHistory([])}
+                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-[#E5E5E5] text-xs font-bold text-[#86868B] hover:text-red-500 transition-all shadow-sm group"
                    >
-                     <RefreshCw size={14} /> 同步云端
+                     <Trash2 size={14} className="group-hover:scale-110 transition-transform" /> 清空记录
                    </button>
                 </div>
 
                 {history.length === 0 ? (
                   <div className="bg-white rounded-3xl p-12 text-center border border-[#E5E5E5] border-dashed">
-                    <p className="text-[#86868B]">暂无历史记录，开始您的第一次创作吧</p>
+                    <p className="text-[#86868B]">暂无本地记录，本次会话生成的图将显示在此处</p>
                   </div>
                 ) : (
                   <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-hide">
@@ -868,7 +770,7 @@ export default function App() {
                       >
                         <div className="relative aspect-square rounded-xl overflow-hidden mb-3 bg-[#F5F5F7]">
                           <img 
-                            src={toImageProxyUrl(item.generatedImages[0])} 
+                            src={toImageProxyUrl(item.img)} 
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
                           <button 
@@ -880,13 +782,16 @@ export default function App() {
                           >
                             <Trash2 size={14} />
                           </button>
+                          <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur rounded text-[8px] text-white font-bold">
+                            {item.angle.replace('视角', '')}
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <p className="text-sm font-bold text-[#1D1D1F] truncate group-hover:text-[#FF6B00] transition-colors">
                             {item.analysis.productName}
                           </p>
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#86868B] font-medium">{new Date(item.timestamp).toLocaleDateString()}</span>
+                            <span className="text-[10px] text-[#86868B] font-medium">{item.time}</span>
                             <span className="text-[10px] bg-[#F5F5F7] px-2 py-0.5 rounded-full font-bold text-[#86868B]">{item.params.style}</span>
                           </div>
                         </div>
