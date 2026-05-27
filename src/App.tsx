@@ -100,6 +100,43 @@ export default function App() {
     }
     return url;
   };
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          const MAX_SIDE = 1600;
+          if (width > MAX_SIDE || height > MAX_SIDE) {
+            if (width > height) {
+              height = Math.round((height * MAX_SIDE) / width);
+              width = MAX_SIDE;
+            } else {
+              width = Math.round((width * MAX_SIDE) / height);
+              height = MAX_SIDE;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Use image/jpeg and 0.85 quality to compress effectively
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+            resolve(compressedBase64);
+          }
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
   
   // Load history strictly from cloud
   useEffect(() => {
@@ -136,15 +173,11 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setUploadedImage(base64);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file);
+      setUploadedImage(compressed);
     }
   };
 
@@ -152,15 +185,12 @@ export default function App() {
     e.preventDefault();
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await compressImage(file);
+      setUploadedImage(compressed);
     }
   };
 
@@ -521,7 +551,7 @@ export default function App() {
                         </div>
                         <div>
                           <p className="text-xl font-bold">点击或将图片拖拽至此</p>
-                          <p className="text-[#86868B] mt-2">产品位于中心效果更佳</p>
+                          <p className="text-[#86868B] mt-2">支持常见图片格式（如 JPG, PNG, WebP），最大支持 20MB（通过前端压缩上传）</p>
                         </div>
                       </div>
                     )}
