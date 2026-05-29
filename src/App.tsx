@@ -227,13 +227,6 @@ export default function App() {
         }
       });
 
-      // 3. Optional Footer
-      initialTextItems.push({
-        id: 'footer',
-        text: "补充信息：点击下方修改",
-        position: 'bc'
-      });
-
       setTextItems(initialTextItems);
       setTextColor(analysisResult.suggestedColor);
 
@@ -344,7 +337,7 @@ export default function App() {
       }
 
       // 2. Draw Selling Points (Detail) vertically stacked below the title & decorative line, right-aligned
-      const details = textItems.slice(1, textItems.length > 4 ? 4 : textItems.length);
+      const details = textItems.slice(1);
       
       if (details.length > 0) {
         ctx.save();
@@ -361,14 +354,6 @@ export default function App() {
           currentY += detailSize * 1.6; // Vertical line height spacing
         });
         ctx.restore();
-      }
-
-      // 3. Draw Footer
-      if (textItems.length >= 5) {
-        const footerItem = textItems[textItems.length - 1];
-        ctx.font = `${footerSize}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText(footerItem.text, img.width / 2, img.height - padding);
       }
     };
   };
@@ -703,7 +688,7 @@ export default function App() {
                         </h3>
                         <div className="space-y-5">
                           {textItems.map((item, i) => {
-                            let label = i === 0 ? "主标题 (产品名)" : i === textItems.length - 1 ? "页脚声明" : `卖点宣传语 ${i}`;
+                            let label = i === 0 ? "主标题 (产品名)" : `卖点宣传语 ${i}`;
                             return (
                               <div key={item.id} className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-[#86868B] uppercase px-1">{label}</label>
