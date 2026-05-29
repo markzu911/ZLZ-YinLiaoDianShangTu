@@ -230,7 +230,7 @@ export default async function handler(req: any, res: any) {
         if (perspective === "正面视角") {
           perspectiveDetail = `
           视角特征：正面构图。
-          布局：将原始图片中的饮品产品放置在画面【左侧】，瓶身自然地倾斜【靠在】左侧堆叠的三个青苹果上。
+          布局：将原始图片中的饮品产品放置在画面【左侧】。三个青苹果竖直排成整齐的一列，饮品的瓶身自然地呈对角线倾斜，斜靠在这一列竖直堆叠的三个青苹果上，且饮品的瓶口处要精准地依靠在最上面的那颗青苹果上。
           留白：画面【右侧】保持大面积简洁留白，以便后续添加文字介绍。`;
         } else if (perspective === "特写视角") {
           perspectiveDetail = `
