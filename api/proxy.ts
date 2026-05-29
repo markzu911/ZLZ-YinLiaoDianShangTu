@@ -194,11 +194,29 @@ export default async function handler(req: any, res: any) {
       const text = result.text;
       try {
         const parsed = JSON.parse(text);
-        // Ensure minimal structure
-        if (!parsed.productName) parsed.productName = "饮品";
-        if (!parsed.sellingPoints) parsed.sellingPoints = [];
-        if (!parsed.suggestedColor) parsed.suggestedColor = "#FFFFFF";
-        return res.json(parsed);
+        const normalized = {
+          productName: parsed.productName || parsed.product_name || parsed.name || "饮品",
+          suggestedColor: parsed.suggestedColor || parsed.suggested_color || parsed.color || "#FFFFFF",
+          sellingPoints: [] as any[]
+        };
+
+        const rawPoints = parsed.sellingPoints || parsed.selling_points || parsed.points || [];
+        if (Array.isArray(rawPoints)) {
+          normalized.sellingPoints = rawPoints.map((sp: any) => {
+            if (typeof sp === 'string') {
+              return { text: sp, position: 'tr' };
+            }
+            if (sp && typeof sp === 'object') {
+              return {
+                text: sp.text || sp.content || sp.name || "",
+                position: sp.position || sp.pos || "tr"
+              };
+            }
+            return { text: String(sp), position: 'tr' };
+          }).filter((sp: any) => sp.text);
+        }
+        
+        return res.json(normalized);
       } catch (e) {
         return res.json({
           productName: "饮品",
@@ -229,9 +247,13 @@ export default async function handler(req: any, res: any) {
         let perspectiveDetail = "";
         if (perspective === "正面视角") {
           perspectiveDetail = `
-          视角特征：正面构图。
-          布局：将原始图片中的饮品产品放置在画面【左侧】。三个青苹果竖直排成整齐的一列，饮品的瓶身自然地呈对角线倾斜，斜靠在这一列竖直堆叠的三个青苹果上，且饮品的瓶口处要精准地依靠在最上面的那颗青苹果上。
-          留白：画面【右侧】保持大面积简洁留白，以便后续添加文字介绍。`;
+          视角特征：正面水平构图。
+          产品与苹果布局：
+          - 画面【左侧】有且仅有【三颗】新鲜的青苹果。这【三颗】青苹果完全垂直堆叠排列，排成一条整齐的垂直直线列（只有第一、第二、第三颗，绝不可以有第四颗或更多）。
+          - 原始图片中的饮品产品无缝融入到画面中，瓶身天然呈斜向对角线姿态，斜靠在这一列垂直堆叠的并且数量确定为【三颗】的青苹果上。
+          - 饮品的瓶口/盖子部分必须精准且吻合地倚靠在最上面的也就是那第三颗青苹果的顶部边缘。
+          - 绝对禁止产生第四颗苹果，画面中的苹果数量必须严格限定为3个。
+          留白：画面【右侧】保持由浅到深的渐变浅绿色大面积高雅留白，无任何干扰背景。`;
         } else if (perspective === "特写视角") {
           perspectiveDetail = `
           视角特征：极近距离特写，瓶身呈对角线【倾斜】姿态。

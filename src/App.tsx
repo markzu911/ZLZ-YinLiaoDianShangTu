@@ -212,18 +212,22 @@ export default function App() {
       // 1. Title
       initialTextItems.push({
         id: 'title',
-        text: analysisResult.productName,
+        text: analysisResult.productName || "饮品",
         position: 'tc'
       });
 
       // 2. Selling Points
       (analysisResult.sellingPoints || []).forEach((sp, i) => {
         if (i < 3) {
-          initialTextItems.push({
-            id: `sp-${i}`,
-            text: sp.text,
-            position: sp.position
-          });
+          const detailText = typeof sp === 'string' ? sp : (sp?.text || "");
+          const detailPos = typeof sp === 'string' ? 'tr' : (sp?.position || 'tr');
+          if (detailText) {
+            initialTextItems.push({
+              id: `sp-${i}`,
+              text: detailText,
+              position: detailPos
+            });
+          }
         }
       });
 
