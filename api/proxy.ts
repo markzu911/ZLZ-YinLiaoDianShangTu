@@ -215,12 +215,25 @@ export default async function handler(req: any, res: any) {
             return { text: String(sp), position: 'tr' };
           }).filter((sp: any) => sp.text);
         }
+
+        // Add default selling points fallback if parsed empty
+        if (normalized.sellingPoints.length === 0) {
+          normalized.sellingPoints = [
+            { text: "饱满真实果粒", position: "tr" },
+            { text: "富含维生素C", position: "tr" },
+            { text: "口感清爽怡人", position: "tr" }
+          ];
+        }
         
         return res.json(normalized);
       } catch (e) {
         return res.json({
           productName: "饮品",
-          sellingPoints: [],
+          sellingPoints: [
+            { text: "饱满真实果粒", position: "tr" },
+            { text: "富含维生素C", position: "tr" },
+            { text: "口感清爽怡人", position: "tr" }
+          ],
           suggestedColor: "#FFFFFF"
         });
       }
@@ -249,10 +262,10 @@ export default async function handler(req: any, res: any) {
           perspectiveDetail = `
           视角特征：正面水平构图。
           产品与苹果布局：
-          - 画面【左侧】有且仅有【三颗】新鲜的青苹果。这【三颗】青苹果完全垂直堆叠排列，排成一条整齐的垂直直线列（只有第一、第二、第三颗，绝不可以有第四颗或更多）。
-          - 原始图片中的饮品产品无缝融入到画面中，瓶身天然呈斜向对角线姿态，斜靠在这一列垂直堆叠的并且数量确定为【三颗】的青苹果上。
-          - 饮品的瓶口/盖子部分必须精准且吻合地倚靠在最上面的也就是那第三颗青苹果的顶部边缘。
-          - 绝对禁止产生第四颗苹果，画面中的苹果数量必须严格限定为3个。
+          - 画面【左侧】有且仅有【三颗】新鲜的青苹果。这【三颗】青苹果完全垂直堆叠排列，排成一列整齐的垂直立柱（刚好是底部的第一颗、中间的第二颗、以及最顶部的第三颗青苹果，绝对不要出现第四颗或更多苹果）。
+          - 原始图片中的饮品产品无缝融入到整个画面中，瓶身天然地呈斜向对角线姿态，斜靠在这叠垂直堆叠的【三颗】青苹果上。
+          - 瓶子底部定位：极其重要，饮品瓶子的底部必须稳固地【支撑放置在下方的地面/底面上】（接地气、有接触感和明显的平面高光阴影，绝对不允许悬浮或悬空飘在半空中）。
+          - 瓶子头部定位：饮品的瓶口/盖子部分必须精准而吻合地倚靠在最上面的那颗（第三颗）最高处的青苹果上。
           留白：画面【右侧】保持由浅到深的渐变浅绿色大面积高雅留白，无任何干扰背景。`;
         } else if (perspective === "特写视角") {
           perspectiveDetail = `
