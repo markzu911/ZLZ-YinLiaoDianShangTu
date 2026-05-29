@@ -307,76 +307,60 @@ export default function App() {
       const centerGap = img.width * 0.25; // Increase gap from center to avoid product
       const baseFontSize = img.height / 800;
       
-      const titleSize = 28 * baseFontSize;
-      const detailSize = 20 * baseFontSize;
-      const footerSize = 18 * baseFontSize;
+      const titleSize = 36 * baseFontSize;
+      const detailSize = 24 * baseFontSize;
+      const footerSize = 22 * baseFontSize;
 
       // 1. Draw Title (Header) - Index 0
+      const titleX = img.width * 0.95; // 5% margin from the right edge
+      const titleY = img.width * 0.05 + titleSize;
+      const lineY = titleY + 12 * baseFontSize;
+
       if (textItems.length > 0) {
+        ctx.save();
         ctx.font = `bold ${titleSize}px sans-serif`;
         ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
-        ctx.fillText(textItems[0].text, img.width / 2, padding + titleSize);
+        ctx.textAlign = 'right';
+        
+        // 50% opacity drop shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 6 * baseFontSize;
+        ctx.shadowOffsetX = 2 * baseFontSize;
+        ctx.shadowOffsetY = 2 * baseFontSize;
+        
+        ctx.fillText(textItems[0].text, titleX, titleY);
+        ctx.restore();
+
+        // Draw white horizontal decorative line under title
+        ctx.save();
+        const titleWidth = ctx.measureText(textItems[0].text).width;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.5 * baseFontSize;
+        ctx.beginPath();
+        ctx.moveTo(titleX - titleWidth, lineY);
+        ctx.lineTo(titleX, lineY);
+        ctx.stroke();
+        ctx.restore();
       }
 
-      // 2. Draw Selling Points (Detail)
+      // 2. Draw Selling Points (Detail) vertically stacked below the title & decorative line, right-aligned
       const details = textItems.slice(1, textItems.length > 4 ? 4 : textItems.length);
-      const detailCount = details.length;
-
-      ctx.fillStyle = textColor;
-      const drawBullet = (x: number, y: number, align: CanvasTextAlign) => {
-        const radius = 4 * baseFontSize;
-        const iconGap = 12 * baseFontSize;
-        ctx.beginPath();
-        const iconX = align === 'right' ? x + iconGap : x - iconGap;
-        ctx.arc(iconX, y - detailSize / 3, radius, 0, Math.PI * 2);
-        ctx.fill();
-      };
-
-      if (detailCount === 1) {
-        // 1 point: Left center
-        ctx.font = `600 ${detailSize}px sans-serif`;
-        ctx.textAlign = 'left';
-        const x = padding + 15 * baseFontSize;
-        const y = img.height / 2;
-        ctx.fillText(details[0].text, x, y);
-        drawBullet(x, y, 'left');
-      } else if (detailCount === 2) {
-        // 2 points: Left & Right
-        ctx.font = `600 ${detailSize}px sans-serif`;
-        // Left
-        const lx = img.width / 2 - centerGap;
-        const ly = img.height / 2;
+      
+      if (details.length > 0) {
+        ctx.save();
         ctx.textAlign = 'right';
-        ctx.fillText(details[0].text, lx, ly);
-        drawBullet(lx, ly, 'right');
-        // Right
-        const rx = img.width / 2 + centerGap;
-        const ry = img.height / 2;
-        ctx.textAlign = 'left';
-        ctx.fillText(details[1].text, rx, ry);
-        drawBullet(rx, ry, 'left');
-      } else if (detailCount === 3) {
-        // 3 points: 1 Left, 2 Right (upper/lower)
-        ctx.font = `600 ${detailSize}px sans-serif`;
-        // Left (0)
-        const lx = img.width / 2 - centerGap;
-        const ly = img.height / 2;
-        ctx.textAlign = 'right';
-        ctx.fillText(details[0].text, lx, ly);
-        drawBullet(lx, ly, 'right');
-        // Right Top (1)
-        const rtx = img.width / 2 + centerGap;
-        const rty = img.height / 2 - detailSize * 1.5;
-        ctx.textAlign = 'left';
-        ctx.fillText(details[1].text, rtx, rty);
-        drawBullet(rtx, rty, 'left');
-        // Right Bottom (2)
-        const rbx = img.width / 2 + centerGap;
-        const rby = img.height / 2 + detailSize * 1.5;
-        ctx.textAlign = 'left';
-        ctx.fillText(details[2].text, rbx, rby);
-        drawBullet(rbx, rby, 'left');
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; // White with 90% opacity
+        
+        let currentY = lineY + 32 * baseFontSize;
+        details.forEach((item) => {
+          ctx.font = `500 ${detailSize}px sans-serif`; // 500 font weight
+          
+          // Draw text aligned with the right edge
+          ctx.fillText(item.text, titleX, currentY);
+          
+          currentY += detailSize * 1.6; // Vertical line height spacing
+        });
+        ctx.restore();
       }
 
       // 3. Draw Footer
