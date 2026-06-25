@@ -116,50 +116,85 @@ export default async function handler(req: any, res: any) {
 
   // Helper to handle the 3-step SaaS upload
   async function performSaasUpload(base64Image: string, userId: string, toolId: string, source: string, fileName: string) {
-    const buffer = Buffer.from(base64Image.split(',')[1] || base64Image, 'base64');
+    const base64Data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+    const buffer = Buffer.from(base64Data, 'base64');
     
     // 1. Token
     const tokenData = await saasFetch("/api/upload/direct-token", {
       method: "POST",
       body: JSON.stringify({
-        userId, toolId, source, mimeType: "image/png", fileName, fileSize: buffer.byteLength
+        userId, 
+        toolId, 
+        source, 
+        mimeType: "image/png", 
+        fileName, 
+        fileSize: buffer.byteLength
       }),
     });
 
-    if (!tokenData.uploadUrl) throw new Error("Failed to get upload URL from SaaS: " + JSON.stringify(tokenData));
+    if (!tokenData || !tokenData.uploadUrl) {
+      console.error("Direct token failed:", tokenData);
+      throw new Error("Failed to get upload URL from SaaS: " + JSON.stringify(tokenData));
+    }
 
-    // 2. PUT
+    // 2. PUT binary to OSS
     const uploadResponse = await fetch(tokenData.uploadUrl, {
-      method: "PUT",
+      method: tokenData.method || "PUT",
       headers: tokenData.headers || { "Content-Type": "image/png" },
       body: buffer
     });
 
-    if (!uploadResponse.ok) throw new Error("Failed to upload to storage: " + uploadResponse.statusText);
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error("OSS upload failed:", uploadResponse.status, errorText);
+      throw new Error(`Failed to upload to storage: ${uploadResponse.statusText}`);
+    }
 
     // 3. Commit
     const commitData = await saasFetch("/api/upload/commit", {
       method: "POST",
       body: JSON.stringify({
-        userId, toolId, source, objectKey: tokenData.objectKey, fileSize: buffer.byteLength
+        userId, 
+        toolId, 
+        source, 
+        objectKey: tokenData.objectKey, 
+        fileSize: buffer.byteLength
       }),
     });
 
-    return commitData;
+    if (!commitData || (!commitData.url && !commitData.image?.url && !commitData.data?.url && !commitData.data?.image?.url)) {
+      console.error("Commit failed or URL missing:", commitData);
+      throw new Error("Failed to commit upload or URL missing: " + JSON.stringify(commitData));
+    }
+
+    // Return the URL prioritizing different possible structures
+    const finalUrl = commitData.url || 
+                     commitData.image?.url || 
+                     commitData.data?.url || 
+                     commitData.data?.image?.url;
+    
+    return { ...commitData, url: finalUrl };
   }
 
   // Convenience endpoint for frontend to upload in one step
   if (url === "/api/proxy-upload") {
     const { base64Image, userId, toolId, source, fileName } = req.body;
     try {
-      const result = await performSaasUpload(base64Image, userId, toolId, source || "beverage-ecommerce-source", fileName || "source.png");
-      const resultImage = result.image || result;
+      const uploadResult = await performSaasUpload(
+        base64Image, 
+        userId, 
+        toolId, 
+        source || "result", 
+        fileName || `result_${Date.now()}.png`
+      );
+      
       return res.json({ 
         success: true, 
-        image: resultImage,
-        imageUrl: resultImage.url 
+        image: uploadResult,
+        imageUrl: uploadResult.url 
       });
     } catch (error: any) {
+      console.error("Proxy upload failed:", error);
       return res.status(500).json({ success: false, message: error.message });
     }
   }
@@ -351,12 +386,29 @@ export default async function handler(req: any, res: any) {
         return res.status(403).json({ success: false, message: consumeData.message || "扣费失败" });
       }
 
-      // Return BASE64 directly as requested for "memory only" history
-      const base64Data = `data:image/png;base64,${generatedBase64}`;
-      return res.json({ 
-        success: true, 
-        imageUrl: base64Data 
-      });
+      // 4. Upload generated image to SaaS Cloud
+      try {
+        const uploadResult = await performSaasUpload(
+          `data:image/png;base64,${generatedBase64}`,
+          userId,
+          toolId,
+          "result",
+          `result_${Date.now()}.png`
+        );
+        
+        return res.json({ 
+          success: true, 
+          imageUrl: uploadResult.url 
+        });
+      } catch (uploadError: any) {
+        console.error("SaaS upload failed after generation:", uploadError);
+        // Fallback to base64 if upload fails, but inform the user/frontend
+        return res.json({ 
+          success: true, 
+          imageUrl: `data:image/png;base64,${generatedBase64}`,
+          warning: "云端保存失败，返回临时图片"
+        });
+      }
     } catch (error: any) {
       const errorMsg = error.message || "";
       if (errorMsg.includes("fetch failed") || errorMsg.includes("timeout")) {

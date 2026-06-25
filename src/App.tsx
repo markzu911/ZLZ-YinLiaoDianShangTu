@@ -368,13 +368,34 @@ export default function App() {
     }
   }, [generatedImages, selectedImageIndex, textItems, textColor]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const base64 = canvas.toDataURL('image/png');
+
+    // 1. Local Download
     const link = document.createElement('a');
     link.download = `beverage-ecommerce-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.href = base64;
     link.click();
+
+    // 2. SaaS Cloud Save (Optional but requested for persistence)
+    if (saasInfo?.userId && saasInfo?.toolId) {
+      try {
+        console.log("Saving composite to SaaS...");
+        await uploadToSaas(
+          base64,
+          saasInfo.userId,
+          saasInfo.toolId,
+          "result",
+          `composite_${Date.now()}.png`
+        );
+        console.log("Composite saved to SaaS successfully");
+      } catch (err) {
+        console.error("Failed to save composite to SaaS", err);
+      }
+    }
   };
 
   const removeFromHistory = (id: string) => {

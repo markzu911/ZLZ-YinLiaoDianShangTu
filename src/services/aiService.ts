@@ -58,8 +58,8 @@ export const uploadToSaas = async (
   base64Image: string,
   userId: string,
   toolId: string,
-  source: string = "beverage-ecommerce-source",
-  fileName: string = "image.png"
+  source: string = "result",
+  fileName: string = `result_${Date.now()}.png`
 ): Promise<string> => {
   // 1. Get Direct Token
   // Note: We'll call a helper endpoint in our proxy to avoid complex frontend logic
