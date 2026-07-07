@@ -80,15 +80,16 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
     try {
       const result = await analyzeProductImage(uploadedImage, saasInfo?.userId, saasInfo?.toolId);
       const sps = result.sellingPoints.map(sp => sp.text).join('、');
+      
+      // Instead of just setting messages, we "send" the analysis results to the AI 
+      // so it can guide the user professionally.
+      const analysisBrief = `系统分析结果：\n产品名称：${result.productName}\n核心卖点：${sps}\n建议色调：${result.suggestedColor}\n\n请确认以上文案是否可以直接使用？`;
+      
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: `分析完成！
-识别产品：${result.productName}
-核心卖点：${sps}
-建议色调：${result.suggestedColor}
-文案是否可用？您可以直接“立即出图”或选择风格。` 
+        content: analysisBrief
       }]);
-      setSuggestions(['立即出图', '选择风格', '修改文案']);
+      setSuggestions(['确认，下一步选择风格', '修改标题', '修改卖点']);
     } catch (err) {
       console.error('Analysis failed', err);
     } finally {
@@ -150,16 +151,16 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    if (suggestion.includes('上传') || suggestion.includes('图片')) {
-      if (suggestion.includes('分析')) {
-        handleAnalyze();
-      } else {
-        fileInputRef.current?.click();
-      }
+    if (suggestion.includes('上传') || (suggestion.includes('图片') && !suggestion.includes('分析'))) {
+      fileInputRef.current?.click();
     } else if (suggestion.includes('出图') || suggestion.includes('生成')) {
       handleQuickGenerate();
     } else if (suggestion.includes('分析')) {
       handleAnalyze();
+    } else if (suggestion.includes('确认') || suggestion.includes('下一步')) {
+      handleSend('文案确认无误，开始选择视觉风格');
+    } else if (suggestion.includes('修改')) {
+      handleSend(`我想修改${suggestion.replace('修改', '')}`);
     } else {
       // For styles or perspectives, we send it as a message to keep the flow
       handleSend(suggestion);

@@ -216,10 +216,12 @@ Goals:
 
 Workflow Logic:
 - If image just uploaded: Suggest "分析产品".
-- After "分析产品": List the Title and 3 Selling Points clearly, then ask: "文案是否可用？" or suggest "选择风格".
-- If user confirms ("可用", "好的", "开始"): Suggest "选择风格" or "立即出图".
-- If style selected but perspective is not: Ask for perspective (正面视角, 特写视角).
-- If all parameters selected or user asks to generate: Suggest "立即出图" and set action to "generate".
+- After "分析产品": AI must display the Title and Selling Points, then ask "文案是否可用？" or "是否需要调整文案？".
+- If user confirms copy: Suggest "选择视觉风格" (现代简约, 奢华高级, 模特氛围).
+- If style selected: Ask for perspective (正面视角, 特写视角).
+- If everything is ready: Suggest "立即出图" and set action to "generate".
+
+If the user tries to skip confirmation, politely remind them that good copy is the soul of design.
 
 Return a JSON object with:
    - "content": the text reply.
