@@ -260,23 +260,23 @@ export default function App() {
     if (!ctx) return;
 
     const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = toImageProxyUrl(generatedImages[selectedImageIndex]);
+    const proxiedUrl = toImageProxyUrl(generatedImages[selectedImageIndex]);
+    
+    if (!proxiedUrl.startsWith('data:')) {
+      img.crossOrigin = "anonymous";
+    }
+
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
 
-      const padding = img.width * 0.05; // Closer to edges
-      const centerGap = img.width * 0.25; // Increase gap from center to avoid product
       const baseFontSize = img.height / 800;
-      
       const titleSize = 36 * baseFontSize;
       const detailSize = 24 * baseFontSize;
-      const footerSize = 22 * baseFontSize;
 
-      // 1. Draw Title (Header) - Index 0
-      const titleX = img.width * 0.95; // 5% margin from the right edge
+      const titleX = img.width * 0.95; 
       const titleY = img.width * 0.05 + titleSize;
       const lineY = titleY + 12 * baseFontSize;
 
@@ -286,7 +286,6 @@ export default function App() {
         ctx.fillStyle = textColor;
         ctx.textAlign = 'right';
         
-        // 50% opacity drop shadow
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
         ctx.shadowBlur = 6 * baseFontSize;
         ctx.shadowOffsetX = 2 * baseFontSize;
@@ -295,10 +294,9 @@ export default function App() {
         ctx.fillText(textItems[0].text, titleX, titleY);
         ctx.restore();
 
-        // Draw white horizontal decorative line under title
         ctx.save();
         const titleWidth = ctx.measureText(textItems[0].text).width;
-        ctx.strokeStyle = '#FFFFFF';
+        ctx.strokeStyle = textColor;
         ctx.lineWidth = 1.5 * baseFontSize;
         ctx.beginPath();
         ctx.moveTo(titleX - titleWidth, lineY);
@@ -307,26 +305,28 @@ export default function App() {
         ctx.restore();
       }
 
-      // 2. Draw Selling Points (Detail) vertically stacked below the title & decorative line, right-aligned
       const details = textItems.slice(1);
-      
       if (details.length > 0) {
         ctx.save();
         ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; // White with 90% opacity
+        ctx.fillStyle = textColor;
+        ctx.globalAlpha = 0.9;
         
         let currentY = lineY + 32 * baseFontSize;
         details.forEach((item) => {
-          ctx.font = `500 ${detailSize}px sans-serif`; // 500 font weight
-          
-          // Draw text aligned with the right edge
+          ctx.font = `500 ${detailSize}px sans-serif`;
           ctx.fillText(item.text, titleX, currentY);
-          
-          currentY += detailSize * 1.6; // Vertical line height spacing
+          currentY += detailSize * 1.6;
         });
         ctx.restore();
       }
     };
+
+    img.onerror = () => {
+      console.error("Canvas load error:", proxiedUrl);
+    };
+
+    img.src = proxiedUrl;
   };
 
   useEffect(() => {
