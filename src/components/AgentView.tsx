@@ -79,11 +79,16 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
     setLoading(true);
     try {
       const result = await analyzeProductImage(uploadedImage, saasInfo?.userId, saasInfo?.toolId);
+      const sps = result.sellingPoints.map(sp => sp.text).join('、');
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: `分析完成。产品是“${result.productName}”，我建议采用“${result.suggestedColor}”作为主色调，突出卖点如“${result.sellingPoints[0]?.text || '清新口感'}”。` 
+        content: `分析完成！
+识别产品：${result.productName}
+核心卖点：${sps}
+建议色调：${result.suggestedColor}
+文案是否可用？您可以直接“立即出图”或选择风格。` 
       }]);
-      setSuggestions(['一键生成现代风格', '尝试特写视角']);
+      setSuggestions(['立即出图', '选择风格', '修改文案']);
     } catch (err) {
       console.error('Analysis failed', err);
     } finally {
@@ -98,7 +103,7 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
     }
 
     setGenerating(true);
-    setMessages(prev => [...prev, { role: 'assistant', content: `正在为您生成“${selectedStyle}”风格的“${selectedPerspective}”作品...` }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: `正在为您生成“${selectedStyle}”风格的作品，请稍候...` }]);
     
     try {
       // Step 1: Analyze for text consistency
@@ -115,10 +120,13 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
         saasInfo?.toolId
       );
 
-      onGenerationSuccess(imageUrl, analysis, { style: selectedStyle, perspective: selectedPerspective, aspectRatio: '1:1', resolution: '1K' });
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: '大功告成！您可以切换到“编辑器”查看细节或下载成品。' }]);
-      setSuggestions(['换个风格再试一次', '去编辑器微调']);
+      // Transition immediately
+      onGenerationSuccess(imageUrl, analysis, { 
+        style: selectedStyle, 
+        perspective: selectedPerspective, 
+        aspectRatio: '1:1', 
+        resolution: '1K' 
+      });
     } catch (err: any) {
       console.error('Quick generation failed', err);
       setMessages(prev => [...prev, { role: 'assistant', content: `生成失败了：${err.message}` }]);

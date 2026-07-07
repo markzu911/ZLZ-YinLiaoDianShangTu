@@ -255,18 +255,23 @@ export default function App() {
 
   const drawCanvas = () => {
     const canvas = canvasRef.current;
-    if (!canvas || generatedImages.length === 0) return;
+    if (!canvas || generatedImages.length === 0) {
+      console.warn("Canvas or images missing", { canvas: !!canvas, count: generatedImages.length });
+      return;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const img = new Image();
     const proxiedUrl = toImageProxyUrl(generatedImages[selectedImageIndex]);
+    console.log("Drawing canvas with:", proxiedUrl);
     
     if (!proxiedUrl.startsWith('data:')) {
       img.crossOrigin = "anonymous";
     }
 
     img.onload = () => {
+      console.log("Image loaded for canvas:", img.width, "x", img.height);
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -322,8 +327,8 @@ export default function App() {
       }
     };
 
-    img.onerror = () => {
-      console.error("Canvas load error:", proxiedUrl);
+    img.onerror = (e) => {
+      console.error("Canvas load error:", proxiedUrl, e);
     };
 
     img.src = proxiedUrl;
