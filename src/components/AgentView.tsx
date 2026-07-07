@@ -142,11 +142,15 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    if (suggestion === '上传产品图' || suggestion === '立即上传产品图') {
-      fileInputRef.current?.click();
-    } else if (suggestion === '立即一键出图' || suggestion === '立即出图') {
+    if (suggestion.includes('上传') || suggestion.includes('图片')) {
+      if (suggestion.includes('分析')) {
+        handleAnalyze();
+      } else {
+        fileInputRef.current?.click();
+      }
+    } else if (suggestion.includes('出图') || suggestion.includes('生成')) {
       handleQuickGenerate();
-    } else if (suggestion === '分析图片' || suggestion === '分析产品') {
+    } else if (suggestion.includes('分析')) {
       handleAnalyze();
     } else {
       // For styles or perspectives, we send it as a message to keep the flow
@@ -205,20 +209,29 @@ export default function AgentView({ saasInfo, uploadedImage, setUploadedImage, o
                   )}
                 </div>
 
-                {/* Contextual Upload Button below AI response */}
-                {showUploadButton && (
+                {/* Suggestions / Contextual Buttons below AI response */}
+                {isLastMessage && msg.role === 'assistant' && !loading && !generating && suggestions.length > 0 && (
                   <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="mt-3"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 flex flex-wrap gap-2"
                   >
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-6 py-3 bg-[#FF6B00] text-white rounded-full text-xs font-bold shadow-lg shadow-[#FF6B00]/20 hover:scale-105 active:scale-95 transition-all"
-                    >
-                      <Upload size={14} />
-                      立即上传产品图
-                    </button>
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSuggestionClick(s)}
+                        className={`
+                          px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm active:scale-95 flex items-center gap-2
+                          ${(s.includes('上传') || s.includes('出图') || s.includes('生成'))
+                            ? 'bg-[#FF6B00] text-white shadow-lg shadow-[#FF6B00]/20' 
+                            : 'bg-white text-[#1D1D1F] border border-[#E5E5E5] hover:border-[#FF6B00] hover:text-[#FF6B00]'}
+                        `}
+                      >
+                        {(s.includes('上传') || s.includes('图片')) && <ImageIcon size={12} />}
+                        {(s.includes('出图') || s.includes('生成')) && <Wand2 size={12} />}
+                        {s}
+                      </button>
+                    ))}
                   </motion.div>
                 )}
               </motion.div>
