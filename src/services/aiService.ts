@@ -157,3 +157,28 @@ export const fetchSaasImages = async (userId: string, toolId?: string, source?: 
   });
   return data.data || [];
 };
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatResponse {
+  success: boolean;
+  content: string;
+  suggestions: string[];
+  action?: 'analyze' | 'generate' | 'upload' | null;
+}
+
+export const chatAgent = async (
+  messages: ChatMessage[],
+  base64Image?: string,
+  userId?: string,
+  toolId?: string
+): Promise<ChatResponse> => {
+  return requestWithBetterErrorHandling("/api/agent-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, base64Image, userId, toolId }),
+  });
+};

@@ -10,6 +10,7 @@ import {
   Settings, 
   Image as ImageIcon, 
   Wand2, 
+  Sparkles,
   X, 
   Check, 
   Download, 
@@ -19,6 +20,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzeProductImage, generateEcommerceImages, generateOneEcommerceImage, AnalysisResult, fetchSaasImages, launchTool, uploadToSaas } from './services/aiService';
+import AgentView from './components/AgentView';
+import { compressImage } from './utils';
 
 interface TextItem {
   id: string;
@@ -66,6 +69,7 @@ const SOURCE = "beverage-ecommerce-result";
 export default function App() {
   const [saasInfo, setSaasInfo] = useState<{ userId: string; toolId: string } | null>(null);
   const [saasData, setSaasData] = useState<SaasData | null>(null);
+  const [activeView, setActiveView] = useState<'editor' | 'history' | 'agent'>('editor');
   const [step, setStep] = useState(1);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -101,43 +105,6 @@ export default function App() {
     return url;
   };
 
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          
-          const MAX_SIDE = 1600;
-          if (width > MAX_SIDE || height > MAX_SIDE) {
-            if (width > height) {
-              height = Math.round((height * MAX_SIDE) / width);
-              width = MAX_SIDE;
-            } else {
-              width = Math.round((width * MAX_SIDE) / height);
-              height = MAX_SIDE;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            // Use image/jpeg and 0.85 quality to compress effectively
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-            resolve(compressedBase64);
-          }
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-  
   // Load history strictly from cloud
   useEffect(() => {
     const initializeSaas = async (userId: string, toolId: string) => {
@@ -413,18 +380,95 @@ export default function App() {
     setAspectRatio(item.params.aspectRatio);
     setResolution(item.params.resolution);
     setStep(2);
+    setActiveView('editor');
+  };
+
+  const handleAgentGenerationSuccess = (imageUrl: string, analysisResult: AnalysisResult, params: any) => {
+    setGeneratedImages([imageUrl]);
+    setSelectedImageIndex(0);
+    setAnalysis(analysisResult);
+    setStep(2);
+    // Move to editor to show result
+    setActiveView('editor');
+
+    // Update Text Editor State
+    const initialTextItems: TextItem[] = [];
+    initialTextItems.push({
+      id: 'title',
+      text: analysisResult.productName || "饮品",
+      position: 'tc'
+    });
+    (analysisResult.sellingPoints || []).forEach((sp, i) => {
+      if (i < 3) {
+        const detailText = typeof sp === 'string' ? sp : (sp?.text || "");
+        const detailPos = typeof sp === 'string' ? 'tr' : (sp?.position || 'tr');
+        if (detailText) {
+          initialTextItems.push({
+            id: `sp-${i}`,
+            text: detailText,
+            position: detailPos
+          });
+        }
+      }
+    });
+    setTextItems(initialTextItems);
+    setTextColor(analysisResult.suggestedColor);
+
+    // Add to history
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      time: new Date().toLocaleString(),
+      img: imageUrl,
+      angle: params.perspective || '正面视角',
+      prompt: `风格：${params.style}`,
+      params: { 
+        style: params.style || '现代简约', 
+        aspectRatio: params.aspectRatio || '1:1', 
+        resolution: params.resolution || '1K' 
+      },
+      sourceImage: uploadedImage!,
+      analysis: analysisResult,
+      textItems: initialTextItems,
+      textColor: analysisResult.suggestedColor
+    };
+    setHistory(prev => [newItem, ...prev]);
   };
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1D1D1F] font-sans pb-20">
       {/* Universal Header */}
-      <header className="sticky top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] flex items-center justify-between px-6 z-50">
-        <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
-          <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
-            <ImageIcon size={18} />
-          </span>
-          AI 饮品电商
-        </h1>
+      <header className="sticky top-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] flex items-center justify-between px-6 z-50">
+        <div className="flex items-center gap-8">
+          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+            <span className="bg-[#FF6B00] text-white p-1 rounded-lg">
+              <ImageIcon size={18} />
+            </span>
+            AI 饮品电商
+          </h1>
+          
+          <nav className="flex items-center gap-1 bg-[#F5F5F7] p-1 rounded-xl border border-[#E5E5E5]">
+            <button 
+              onClick={() => setActiveView('editor')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeView === 'editor' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}
+            >
+              设计编辑器
+            </button>
+            <button 
+              onClick={() => setActiveView('agent')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeView === 'agent' ? 'bg-[#FF6B00] text-white shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}
+            >
+              <Sparkles size={12} />
+              智能体生成
+            </button>
+            <button 
+              onClick={() => setActiveView('history')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeView === 'history' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}
+            >
+              云端记录
+            </button>
+          </nav>
+        </div>
+        
         <div className="flex items-center gap-4">
           <AnimatePresence mode="popLayout">
             {saasData ? (
@@ -485,7 +529,80 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-4 sm:p-8 relative">
         <AnimatePresence mode="wait">
-          {step === 1 && (
+          {activeView === 'agent' && (
+            <motion.section
+              key="agent"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="max-w-4xl mx-auto w-full h-[calc(100vh-160px)] min-h-[600px]"
+            >
+              <AgentView 
+                saasInfo={saasInfo}
+                uploadedImage={uploadedImage}
+                setUploadedImage={setUploadedImage}
+                onGenerationSuccess={handleAgentGenerationSuccess}
+              />
+            </motion.section>
+          )}
+
+          {activeView === 'history' && (
+            <motion.section
+              key="history-view"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-6xl mx-auto space-y-8"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold">云端生成记录</h2>
+                  <p className="text-[#86868B] text-sm">查看并管理您在云端保存的作品</p>
+                </div>
+                <button 
+                  onClick={() => setActiveView('editor')}
+                  className="px-6 py-2.5 bg-[#1D1D1F] text-white rounded-full text-sm font-bold shadow-lg hover:bg-[#2c2c2e] transition-all"
+                >
+                  去创建新作品
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {history.map(item => (
+                  <motion.div 
+                    key={item.id}
+                    whileHover={{ y: -5 }}
+                    onClick={() => loadFromHistory(item)}
+                    className="bg-white rounded-3xl p-4 border border-[#E5E5E5] cursor-pointer hover:shadow-2xl transition-all group"
+                  >
+                    <div className="relative aspect-square rounded-2xl overflow-hidden mb-4 bg-[#F5F5F7]">
+                      <img 
+                        src={toImageProxyUrl(item.img)} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <div className="bg-white/90 backdrop-blur p-2 rounded-full shadow-lg text-[#FF6B00]">
+                            <ImageIcon size={16} />
+                         </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-bold text-[#1D1D1F] truncate group-hover:text-[#FF6B00] transition-colors">{item.analysis.productName}</p>
+                      <p className="text-xs text-[#86868B] font-medium">{item.time}</p>
+                    </div>
+                  </motion.div>
+                ))}
+                {history.length === 0 && (
+                  <div className="col-span-full py-20 text-center bg-white rounded-[40px] border border-[#E5E5E5] border-dashed">
+                    <HistoryIcon className="mx-auto text-[#D2D2D7] mb-4" size={48} />
+                    <p className="text-[#86868B] font-medium">暂无云端记录，生成的作品将自动同步至此</p>
+                  </div>
+                )}
+              </div>
+            </motion.section>
+          )}
+
+          {activeView === 'editor' && step === 1 && (
             <motion.section 
               key="step1"
               initial={{ opacity: 0, y: 10 }}
@@ -642,7 +759,7 @@ export default function App() {
             </motion.section>
           )}
 
-          {step === 2 && (
+          {activeView === 'editor' && step === 2 && (
             <motion.section 
               key="step2"
               initial={{ opacity: 0, x: 20 }}

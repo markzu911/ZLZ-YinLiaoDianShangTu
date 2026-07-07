@@ -199,6 +199,82 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  if (url === "/api/agent-chat") {
+    const { messages, base64Image, userId, toolId } = req.body;
+    try {
+      // 1. Optional SaaS Verification (optional for chat but good practice if it uses credits eventually)
+      // For now, let's just use Gemini.
+
+      const systemPrompt = `You are a minimalist AI design assistant for beverage e-commerce.
+Goals:
+1. Guide user through: Upload -> Choose Style -> Choose Perspective -> Generate.
+2. If user mentions "1:1" or "1k", acknowledge these are ready and ask for the next design step (Style or Perspective).
+3. Replies must be extremely concise, strictly 1-2 lines.
+4. NO markdown bolding (**), NO emojis.
+5. Language: Chinese (Simplified).
+6. If the user asks about anything NOT related to beverage design or e-commerce, strictly reply: "抱歉，我只专注于饮品电商设计，请上传图片或开始设计。" and provide design-related suggestions.
+
+Workflow Logic:
+- If image just uploaded: Suggest "分析图片" or "选择视觉风格".
+- If style not selected: Ask for style (现代简约, 奢华高级, 模特氛围).
+- If style selected but perspective is not: Ask for perspective (正面视角, 特写视角).
+- If all parameters selected: Suggest "立即出图".
+
+Return a JSON object with:
+   - "content": the text reply.
+   - "suggestions": an array of 2-3 strings for follow-up buttons.
+   - "action": optional string ("analyze", "generate", "upload").`;
+
+      const contents = messages.map((m: any) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+      // Add image to the last user message if provided
+      if (base64Image && contents.length > 0) {
+        const lastUserMsg = [...contents].reverse().find(c => c.role === 'user');
+        if (lastUserMsg) {
+          lastUserMsg.parts.unshift({
+            inlineData: {
+              mimeType: "image/png",
+              data: base64Image.split(',')[1] || base64Image
+            }
+          });
+        }
+      }
+
+      const result = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          { role: "user", parts: [{ text: systemPrompt }] },
+          ...contents
+        ],
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const text = result.text;
+      try {
+        const parsed = JSON.parse(text);
+        return res.json({
+          success: true,
+          content: parsed.content || "您可以上传图片，我来帮您分析场景并生成设计。",
+          suggestions: parsed.suggestions || ["上传图片", "查看风格"],
+          action: parsed.action || null
+        });
+      } catch (e) {
+        return res.json({
+          success: true,
+          content: text.replace(/\*\*/g, '').replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').slice(0, 100),
+          suggestions: ["上传图片", "设计建议"]
+        });
+      }
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
   if (url === "/api/analyze" || url === "/api/gemini") {
     const { base64Image, userId, toolId } = req.body;
     try {
