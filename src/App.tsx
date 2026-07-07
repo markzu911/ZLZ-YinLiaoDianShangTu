@@ -330,10 +330,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (generatedImages.length > 0) {
+    if (generatedImages.length > 0 && activeView === 'editor' && step === 2) {
       drawCanvas();
     }
-  }, [generatedImages, selectedImageIndex, textItems, textColor]);
+  }, [generatedImages, selectedImageIndex, textItems, textColor, activeView, step]);
 
   const handleDownload = async () => {
     const canvas = canvasRef.current;
